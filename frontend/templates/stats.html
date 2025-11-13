@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Статистика - Interview Practice Platform</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <header class="header">
+        <div class="header-content">
+            <a href="/" class="logo">Interview Practice</a>
+            <nav class="nav">
+                <a href="/">Главная</a>
+                <a href="/practice">Практика</a>
+                <a href="/stats" class="active">Статистика</a>
+            </nav>
+        </div>
+    </header>
+
+    <main class="container">
+        <div style="max-width: 1200px; margin: 0 auto;">
+            <div style="text-align: center; margin-bottom: 3rem;">
+                <h1 style="font-size: 2.5rem; margin-bottom: 0.5rem;">📊 Твоя статистика</h1>
+                <p class="text-secondary" style="font-size: 1.125rem;">
+                    Отслеживай свой прогресс и достижения
+                </p>
+            </div>
+
+            <!-- Общая статистика -->
+            <div class="grid grid-2 mb-4">
+            <div class="stat-card">
+                <div class="stat-value" id="totalQuestions">0</div>
+                <div class="stat-label">Всего вопросов</div>
+            </div>
+            
+            <div class="stat-card">
+                <div class="stat-value" id="answeredQuestions">0</div>
+                <div class="stat-label">Отвечено</div>
+            </div>
+            
+            <div class="stat-card">
+                <div class="stat-value" id="progressPercent">0%</div>
+                <div class="stat-label">Прогресс</div>
+            </div>
+            
+            <div class="stat-card">
+                <div class="stat-value" id="totalSessions">0</div>
+                <div class="stat-label">Сессий</div>
+            </div>
+        </div>
+
+            <!-- Прогресс по темам -->
+            <div class="mb-4">
+                <h2>Прогресс по темам</h2>
+                <div id="topicsProgress"></div>
+            </div>
+
+            <!-- Последние сессии -->
+            <div class="mb-4">
+                <h2>Последние сессии</h2>
+                <div id="recentSessions"></div>
+            </div>
+
+            <!-- Активность -->
+            <div class="mb-4">
+                <h2>Активность за последние 30 дней</h2>
+                <div id="activityChart" class="card">
+                    <div id="activityContent"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Загрузка -->
+        <div id="loadingSpinner" class="hidden">
+            <div class="spinner"></div>
+        </div>
+    </main>
+
+    <script src="/static/app.js"></script>
+    <script>
+        // Элементы DOM
+        const totalQuestions = document.getElementById('totalQuestions');
+        const answeredQuestions = document.getElementById('answeredQuestions');
+        const progressPercent = document.getElementById('progressPercent');
+        const totalSessions = document.getElementById('totalSessions');
+        const topicsProgress = document.getElementById('topicsProgress');
+        const recentSessions = document.getElementById('recentSessions');
+        const activityContent = document.getElementById('activityContent');
+        const loadingSpinner = document.getElementById('loadingSpinner');
+
+        // Загрузка статистики
+        async function loadStats() {
+            try {
+                loadingSpinner.classList.remove('hidden');
+                
+                const stats = await API.getStats();
+                const sessions = await API.getRecentSessions(10);
+
+                // Общая статистика
+                totalQuestions.textContent = stats.total_questions;
+                answeredQuestions.textContent = stats.answered_questions;
+                progressPercent.textContent = stats.progress_percent + '%';
+                totalSessions.textContent = stats.total_sessions;
+
+                // Прогресс по темам
+                if (stats.topics.length > 0) {
+                    topicsProgress.innerHTML = stats.topics.map(topic => `
+                        <div class="card mb-2">
+                            <div class="flex-between mb-1">
+                                <h3 style="font-weight: 600;">${topic.name}</h3>
+                                <span class="text-secondary">${topic.answered_questions} / ${topic.total_questions}</span>
+                            </div>
+                            <div class="progress-bar">
+                                <div class="progress-fill" style="width: ${topic.progress_percent}%"></div>
+                            </div>
+                            <p class="text-secondary" style="font-size: 0.875rem; margin-top: 0.5rem;">
+                                ${topic.progress_percent}% завершено
+                            </p>
+                        </div>
+                    `).join('');
+                } else {
+                    topicsProgress.innerHTML = '<div class="card text-center"><p class="text-secondary">Пока нет данных</p></div>';
+                }
+
+                // Последние сессии
+                if (sessions.length > 0) {
+                    recentSessions.innerHTML = sessions.map(session => {
+                        const startDate = new Date(session.started_at);
+                        const formattedDate = startDate.toLocaleDateString('ru-RU', {
+                            month: 'short',
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                        });
+
+                        return `
+                            <div class="card mb-2">
+                                <div class="flex-between">
+                                    <div>
+                                        <p style="font-weight: 500;">${formattedDate}</p>
+                                        <p class="text-secondary" style="font-size: 0.875rem;">
+                                            ${session.questions_count} вопросов
+                                            ${session.duration_minutes ? ` • ${Utils.formatDuration(session.duration_minutes)}` : ''}
+                                        </p>
+                                    </div>
+                                    ${session.ended_at ? '<span style="color: #10b981;">✓ Завершена</span>' : '<span style="color: #f59e0b;">⏱ В процессе</span>'}
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
+                } else {
+                    recentSessions.innerHTML = '<div class="card text-center"><p class="text-secondary">Пока нет сессий</p></div>';
+                }
+
+                // График активности
+                if (stats.daily_activity.length > 0) {
+                    renderActivityChart(stats.daily_activity);
+                } else {
+                    activityContent.innerHTML = '<p class="text-center text-secondary">Пока нет активности</p>';
+                }
+
+                loadingSpinner.classList.add('hidden');
+
+            } catch (error) {
+                loadingSpinner.classList.add('hidden');
+                showNotification('Ошибка загрузки статистики', 'error');
+            }
+        }
+
+        // Простой график активности (текстовый)
+        function renderActivityChart(activityData) {
+            if (activityData.length === 0) {
+                activityContent.innerHTML = '<p class="text-center text-secondary">Нет данных за последние 30 дней</p>';
+                return;
+            }
+
+            // Находим максимум для нормализации
+            const maxCount = Math.max(...activityData.map(d => d.count));
+
+            const chartHtml = activityData.map(item => {
+                const date = new Date(item.date);
+                const dateStr = date.toLocaleDateString('ru-RU', { month: 'short', day: 'numeric' });
+                const barWidth = (item.count / maxCount) * 100;
+
+                return `
+                    <div style="display: flex; align-items: center; margin-bottom: 0.5rem;">
+                        <div style="width: 80px; font-size: 0.875rem; color: var(--text-secondary);">
+                            ${dateStr}
+                        </div>
+                        <div style="flex: 1; background: var(--bg-secondary); height: 24px; border-radius: 0.25rem; overflow: hidden;">
+                            <div style="width: ${barWidth}%; height: 100%; background: var(--accent-color); transition: width 0.3s;"></div>
+                        </div>
+                        <div style="width: 40px; text-align: right; font-size: 0.875rem; font-weight: 500; margin-left: 0.5rem;">
+                            ${item.count}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            activityContent.innerHTML = chartHtml;
+        }
+
+        // Инициализация
+        loadStats();
+    </script>
+</body>
+</html>
+

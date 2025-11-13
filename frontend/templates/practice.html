@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Практика - Interview Practice Platform</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+</head>
+<body>
+    <header class="header">
+        <div class="header-content">
+            <a href="/" class="logo">Interview Practice</a>
+            <nav class="nav">
+                <a href="/">Главная</a>
+                <a href="/practice" class="active">Практика</a>
+                <a href="/stats">Статистика</a>
+            </nav>
+        </div>
+    </header>
+
+    <main class="container-narrow">
+        <!-- Выбор темы -->
+        <div id="topicSelection" class="mb-4">
+            <h1>Выбери тему для практики</h1>
+            
+            <div id="topicsList" class="grid grid-2">
+                <!-- Темы загружаются динамически -->
+            </div>
+        </div>
+
+        <!-- Область практики -->
+        <div id="practiceArea" class="hidden">
+            <!-- Информация о сессии -->
+            <div class="flex-between mb-4" style="flex-wrap: wrap; gap: 1rem;">
+                <div>
+                    <h2 id="topicName"></h2>
+                    <p class="text-secondary" style="margin-top: 0.25rem;">
+                        Вопросов пройдено: <span id="questionsCount" style="font-weight: 600; color: var(--accent-color);">0</span>
+                    </p>
+                </div>
+                <button id="endSessionBtn" class="btn btn-secondary">Завершить сессию</button>
+            </div>
+
+            <!-- Вопрос -->
+            <div id="questionContainer" class="question-container">
+                <div class="question-header">
+                    <h3 id="questionTitle"></h3>
+                    <span id="difficultyBadge" class="difficulty-badge"></span>
+                </div>
+                
+                <div id="questionText" style="line-height: 1.8;"></div>
+            </div>
+
+            <!-- Область ответа -->
+            <div class="mb-4">
+                <label for="userAnswer" style="display: block; font-weight: 600; margin-bottom: 0.75rem; color: var(--text-primary);">
+                    Твой ответ:
+                </label>
+                <textarea id="userAnswer" placeholder="Напиши свой ответ здесь... Используй этот блок для подготовки ответа перед тем, как посмотреть правильный вариант."></textarea>
+            </div>
+
+            <!-- Кнопки действий -->
+            <div class="flex gap-2 mb-4" style="flex-wrap: wrap;">
+                <button id="showAnswerBtn" class="btn btn-primary">✓ Показать правильный ответ</button>
+                <button id="nextQuestionBtn" class="btn btn-secondary">→ Следующий вопрос</button>
+            </div>
+
+            <!-- Правильный ответ (скрыт по умолчанию) -->
+            <div id="answerSection" class="answer-section hidden">
+                <div class="answer-header">✅ Правильный ответ:</div>
+                <div id="answerText"></div>
+            </div>
+        </div>
+
+        <!-- Summary сессии -->
+        <div id="summarySection" class="hidden">
+            <div style="text-align: center; margin-bottom: 2rem;">
+                <h1 style="font-size: 2.25rem;">🎉 Сессия завершена!</h1>
+                <p class="text-secondary" style="font-size: 1.125rem; margin-top: 0.5rem;">
+                    Отличная работа! Вот твои результаты:
+                </p>
+            </div>
+            
+            <div class="card mb-4">
+                <h3 class="card-title mb-2">Статистика сессии:</h3>
+                <div id="summaryContent" style="font-size: 1rem;"></div>
+            </div>
+
+            <div style="margin-bottom: 1rem;">
+                <h3 style="margin-bottom: 0.75rem;">Сводка по теме:</h3>
+            </div>
+            <div class="summary-box" id="summaryText"></div>
+
+            <div class="flex gap-2" style="flex-wrap: wrap; margin-top: 2rem;">
+                <button id="copySummaryBtn" class="btn btn-primary">📋 Копировать сводку</button>
+                <a href="/practice" class="btn btn-secondary">🔄 Начать новую сессию</a>
+            </div>
+        </div>
+
+        <!-- Загрузка -->
+        <div id="loadingSpinner" class="hidden">
+            <div class="spinner"></div>
+        </div>
+    </main>
+
+    <script src="/static/app.js"></script>
+    <script>
+        let currentSession = null;
+        let currentTopic = null;
+        let currentQuestion = null;
+        let questionsAnswered = 0;
+
+        // Получаем topic из URL параметров
+        const urlParams = new URLSearchParams(window.location.search);
+        const topicIdFromUrl = urlParams.get('topic');
+
+        // Элементы DOM
+        const topicSelection = document.getElementById('topicSelection');
+        const practiceArea = document.getElementById('practiceArea');
+        const summarySection = document.getElementById('summarySection');
+        const loadingSpinner = document.getElementById('loadingSpinner');
+        
+        const topicsList = document.getElementById('topicsList');
+        const topicName = document.getElementById('topicName');
+        const questionsCount = document.getElementById('questionsCount');
+        const questionTitle = document.getElementById('questionTitle');
+        const difficultyBadge = document.getElementById('difficultyBadge');
+        const questionText = document.getElementById('questionText');
+        const userAnswer = document.getElementById('userAnswer');
+        const answerSection = document.getElementById('answerSection');
+        const answerText = document.getElementById('answerText');
+        
+        const showAnswerBtn = document.getElementById('showAnswerBtn');
+        const nextQuestionBtn = document.getElementById('nextQuestionBtn');
+        const endSessionBtn = document.getElementById('endSessionBtn');
+
+        // Инициализация
+        async function init() {
+            if (topicIdFromUrl) {
+                await startPractice(parseInt(topicIdFromUrl));
+            } else {
+                await loadTopics();
+            }
+        }
+
+        // Загрузка списка тем
+        async function loadTopics() {
+            try {
+                const topics = await API.getTopics();
+                
+                if (topics.length === 0) {
+                    topicsList.innerHTML = '<div class="card text-center"><p class="text-secondary">Темы не найдены. Импортируй вопросы на главной странице.</p></div>';
+                    return;
+                }
+
+                topicsList.innerHTML = topics.map(topic => `
+                    <div class="card">
+                        <h3 class="card-title">${topic.name}</h3>
+                        <p class="text-secondary mb-2">Вопросов: ${topic.question_count}</p>
+                        <button onclick="startPractice(${topic.id})" class="btn btn-primary">Начать</button>
+                    </div>
+                `).join('');
+            } catch (error) {
+                showNotification('Ошибка загрузки тем', 'error');
+            }
+        }
+
+        // Начало практики
+        async function startPractice(topicId) {
+            try {
+                // Создаем новую сессию
+                const session = await API.startSession();
+                currentSession = session.session_id;
+                currentTopic = topicId;
+                questionsAnswered = 0;
+
+                // Получаем информацию о теме
+                const topics = await API.getTopics();
+                const topic = topics.find(t => t.id === topicId);
+                topicName.textContent = topic.name;
+
+                // Переключаем интерфейс
+                topicSelection.classList.add('hidden');
+                practiceArea.classList.remove('hidden');
+
+                // Загружаем первый вопрос
+                await loadNextQuestion();
+
+            } catch (error) {
+                showNotification('Ошибка начала сессии', 'error');
+            }
+        }
+
+        // Загрузка следующего вопроса
+        async function loadNextQuestion() {
+            try {
+                loadingSpinner.classList.remove('hidden');
+                answerSection.classList.add('hidden');
+                userAnswer.value = '';
+
+                const question = await API.getQuestion(currentTopic, null, currentSession);
+                currentQuestion = question;
+
+                questionTitle.textContent = question.title;
+                difficultyBadge.textContent = question.difficulty;
+                difficultyBadge.className = `difficulty-badge ${Utils.getDifficultyClass(question.difficulty)}`;
+                
+                // Парсим markdown в questionText
+                questionText.innerHTML = parseMarkdownToHtml(question.question_text);
+                
+                // Подсветка кода
+                questionText.querySelectorAll('pre code').forEach((block) => {
+                    hljs.highlightElement(block);
+                });
+
+                loadingSpinner.classList.add('hidden');
+
+            } catch (error) {
+                loadingSpinner.classList.add('hidden');
+                
+                if (error.message.includes('все вопросы пройдены')) {
+                    showNotification('Все вопросы по теме пройдены!', 'success');
+                    await endSession();
+                } else {
+                    showNotification('Ошибка загрузки вопроса', 'error');
+                }
+            }
+        }
+
+        // Показать ответ
+        showAnswerBtn.addEventListener('click', async () => {
+            try {
+                // Сохраняем ответ пользователя
+                if (userAnswer.value.trim()) {
+                    await API.submitAnswer(currentQuestion.id, userAnswer.value, currentSession);
+                    questionsAnswered++;
+                    questionsCount.textContent = questionsAnswered;
+                }
+
+                // Загружаем правильный ответ
+                const questionWithAnswer = await API.getQuestionWithAnswer(currentQuestion.id);
+                
+                answerText.innerHTML = parseMarkdownToHtml(questionWithAnswer.answer_text);
+                
+                // Подсветка кода в ответе
+                answerText.querySelectorAll('pre code').forEach((block) => {
+                    hljs.highlightElement(block);
+                });
+                
+                answerSection.classList.remove('hidden');
+
+            } catch (error) {
+                showNotification('Ошибка загрузки ответа', 'error');
+            }
+        });
+
+        // Следующий вопрос
+        nextQuestionBtn.addEventListener('click', async () => {
+            // Сохраняем ответ если еще не сохранили
+            if (!answerSection.classList.contains('hidden') && userAnswer.value.trim()) {
+                // Ответ уже сохранен при показе правильного ответа
+            } else if (userAnswer.value.trim()) {
+                await API.submitAnswer(currentQuestion.id, userAnswer.value, currentSession);
+                questionsAnswered++;
+                questionsCount.textContent = questionsAnswered;
+            }
+
+            await loadNextQuestion();
+        });
+
+        // Завершить сессию
+        endSessionBtn.addEventListener('click', async () => {
+            if (confirm('Завершить сессию? Ты увидишь статистику.')) {
+                await endSession();
+            }
+        });
+
+        async function endSession() {
+            try {
+                loadingSpinner.classList.remove('hidden');
+                
+                const result = await API.endSession(currentSession);
+                
+                // Показываем summary
+                practiceArea.classList.add('hidden');
+                loadingSpinner.classList.add('hidden');
+                summarySection.classList.remove('hidden');
+
+                document.getElementById('summaryContent').innerHTML = `
+                    <p><strong>Вопросов пройдено:</strong> ${result.questions_count}</p>
+                    <p><strong>Длительность:</strong> ${Utils.formatDuration(result.duration_minutes)}</p>
+                `;
+
+                document.getElementById('summaryText').textContent = result.summary;
+
+                // Обработчик копирования
+                document.getElementById('copySummaryBtn').addEventListener('click', async () => {
+                    const success = await copyToClipboard(result.summary);
+                    if (success) {
+                        showNotification('Скопировано в буфер обмена!', 'success');
+                    } else {
+                        showNotification('Ошибка копирования', 'error');
+                    }
+                });
+
+            } catch (error) {
+                loadingSpinner.classList.add('hidden');
+                showNotification('Ошибка завершения сессии', 'error');
+            }
+        }
+
+        // Парсинг markdown в HTML
+        function parseMarkdownToHtml(text) {
+            // Обработка code blocks
+            let html = text.replace(/```(\w+)?\n([\s\S]*?)```/g, (match, lang, code) => {
+                return `<pre><code class="language-${lang || 'text'}">${escapeHtml(code.trim())}</code></pre>`;
+            });
+            
+            // Inline code
+            html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+            
+            // Переносы строк
+            html = html.replace(/\n\n/g, '</p><p>');
+            html = html.replace(/\n/g, '<br>');
+            html = '<p>' + html + '</p>';
+            
+            return html;
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Запуск
+        init();
+    </script>
+</body>
+</html>
+
