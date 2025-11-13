@@ -3,16 +3,17 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Статистика - Interview Practice Platform</title>
+    <title>Статистика - Deep Learning Platform</title>
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
     <header class="header">
         <div class="header-content">
-            <a href="/" class="logo">Interview Practice</a>
+            <a href="/" class="logo">Deep Learning Platform</a>
             <nav class="nav">
                 <a href="/">Главная</a>
                 <a href="/practice">Практика</a>
+                <a href="/review">Повторение</a>
                 <a href="/stats" class="active">Статистика</a>
             </nav>
         </div>
@@ -23,89 +24,132 @@
             <div style="text-align: center; margin-bottom: 3rem;">
                 <h1 style="font-size: 2.5rem; margin-bottom: 0.5rem;">📊 Твоя статистика</h1>
                 <p class="text-secondary" style="font-size: 1.125rem;">
-                    Отслеживай свой прогресс и достижения
+                    Отслеживай свой прогресс и находи слабые места
                 </p>
             </div>
 
             <!-- Общая статистика -->
-            <div class="grid grid-2 mb-4">
-            <div class="stat-card">
-                <div class="stat-value" id="totalQuestions">0</div>
-                <div class="stat-label">Всего вопросов</div>
+            <div class="grid grid-2 mb-4" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
+                <div class="stat-card">
+                    <div class="stat-value" id="totalQuestions">0</div>
+                    <div class="stat-label">Всего вопросов</div>
+                </div>
+                
+                <div class="stat-card">
+                    <div class="stat-value" id="answeredQuestions">0</div>
+                    <div class="stat-label">Отвечено</div>
+                </div>
+                
+                <div class="stat-card">
+                    <div class="stat-value" id="progressPercent">0%</div>
+                    <div class="stat-label">Прогресс</div>
+                </div>
+                
+                <div class="stat-card">
+                    <div class="stat-value" id="totalSessions">0</div>
+                    <div class="stat-label">Сессий</div>
+                </div>
             </div>
-            
-            <div class="stat-card">
-                <div class="stat-value" id="answeredQuestions">0</div>
-                <div class="stat-label">Отвечено</div>
+
+            <!-- Knowledge Map -->
+            <div class="card mb-4">
+                <h2 style="margin-bottom: 1.5rem;">🗺️ Knowledge Map</h2>
+                <p class="text-secondary" style="margin-bottom: 1.5rem;">
+                    Твой прогресс по уровням понимания
+                </p>
+                <div id="knowledgeMap"></div>
             </div>
-            
-            <div class="stat-card">
-                <div class="stat-value" id="progressPercent">0%</div>
-                <div class="stat-label">Прогресс</div>
+
+            <!-- Retention (Spaced Repetition) -->
+            <div class="card mb-4">
+                <h2 style="margin-bottom: 1.5rem;">🔄 Retention & Review</h2>
+                <div class="grid grid-2" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem;">
+                    <div>
+                        <div style="font-size: 2.5rem; font-weight: 700; color: var(--accent-color); margin-bottom: 0.5rem;" id="dueTodayCount">0</div>
+                        <div class="text-secondary">Вопросов на сегодня</div>
+                    </div>
+                    <div>
+                        <div style="font-size: 2.5rem; font-weight: 700; color: #3b82f6; margin-bottom: 0.5rem;" id="dueTomorrowCount">0</div>
+                        <div class="text-secondary">Вопросов на завтра</div>
+                    </div>
+                    <div>
+                        <div style="font-size: 2.5rem; font-weight: 700; color: #10b981; margin-bottom: 0.5rem;" id="totalInReviewCount">0</div>
+                        <div class="text-secondary">В системе повторений</div>
+                    </div>
+                </div>
+                <div class="mt-4">
+                    <a href="/review" class="btn btn-primary">Начать повторение →</a>
+                </div>
             </div>
-            
-            <div class="stat-card">
-                <div class="stat-value" id="totalSessions">0</div>
-                <div class="stat-label">Сессий</div>
+
+            <!-- Weak Spots -->
+            <div class="card mb-4" id="weakSpotsSection">
+                <h2 style="margin-bottom: 1.5rem;">⚠️ Слабые места</h2>
+                <p class="text-secondary" style="margin-bottom: 1.5rem;">
+                    Темы, которые требуют больше внимания
+                </p>
+                <div id="weakSpotsList"></div>
             </div>
-        </div>
 
             <!-- Прогресс по темам -->
             <div class="mb-4">
-                <h2>Прогресс по темам</h2>
+                <h2 style="font-size: 1.75rem; margin-bottom: 1rem;">📚 Прогресс по темам</h2>
                 <div id="topicsProgress"></div>
             </div>
 
             <!-- Последние сессии -->
             <div class="mb-4">
-                <h2>Последние сессии</h2>
+                <h2 style="font-size: 1.75rem; margin-bottom: 1rem;">📝 Последние сессии</h2>
                 <div id="recentSessions"></div>
             </div>
 
             <!-- Активность -->
-            <div class="mb-4">
-                <h2>Активность за последние 30 дней</h2>
-                <div id="activityChart" class="card">
+            <div class="card mb-4">
+                <h2 style="margin-bottom: 1rem;">📈 Активность (последние 30 дней)</h2>
+                <div id="activityChart">
                     <div id="activityContent"></div>
                 </div>
             </div>
-        </div>
 
-        <!-- Загрузка -->
-        <div id="loadingSpinner" class="hidden">
-            <div class="spinner"></div>
+            <!-- Загрузка -->
+            <div id="loadingSpinner" class="hidden">
+                <div class="spinner"></div>
+            </div>
         </div>
     </main>
 
     <script src="/static/app.js"></script>
     <script>
-        // Элементы DOM
-        const totalQuestions = document.getElementById('totalQuestions');
-        const answeredQuestions = document.getElementById('answeredQuestions');
-        const progressPercent = document.getElementById('progressPercent');
-        const totalSessions = document.getElementById('totalSessions');
-        const topicsProgress = document.getElementById('topicsProgress');
-        const recentSessions = document.getElementById('recentSessions');
-        const activityContent = document.getElementById('activityContent');
         const loadingSpinner = document.getElementById('loadingSpinner');
 
-        // Загрузка статистики
         async function loadStats() {
             try {
                 loadingSpinner.classList.remove('hidden');
                 
                 const stats = await API.getStats();
                 const sessions = await API.getRecentSessions(10);
+                const reviewStats = await fetch('/api/review/stats').then(r => r.json());
 
                 // Общая статистика
-                totalQuestions.textContent = stats.total_questions;
-                answeredQuestions.textContent = stats.answered_questions;
-                progressPercent.textContent = stats.progress_percent + '%';
-                totalSessions.textContent = stats.total_sessions;
+                document.getElementById('totalQuestions').textContent = stats.total_questions;
+                document.getElementById('answeredQuestions').textContent = stats.answered_questions;
+                document.getElementById('progressPercent').textContent = stats.progress_percent + '%';
+                document.getElementById('totalSessions').textContent = stats.total_sessions;
+
+                // Review stats
+                document.getElementById('dueTodayCount').textContent = reviewStats.due_today;
+                document.getElementById('dueTomorrowCount').textContent = reviewStats.due_tomorrow;
+                document.getElementById('totalInReviewCount').textContent = reviewStats.total_in_review;
+
+                // Knowledge Map
+                renderKnowledgeMap(stats.topics);
+
+                // Weak Spots
+                renderWeakSpots(stats.topics);
 
                 // Прогресс по темам
                 if (stats.topics.length > 0) {
-                    topicsProgress.innerHTML = stats.topics.map(topic => `
+                    document.getElementById('topicsProgress').innerHTML = stats.topics.map(topic => `
                         <div class="card mb-2">
                             <div class="flex-between mb-1">
                                 <h3 style="font-weight: 600;">${topic.name}</h3>
@@ -120,12 +164,12 @@
                         </div>
                     `).join('');
                 } else {
-                    topicsProgress.innerHTML = '<div class="card text-center"><p class="text-secondary">Пока нет данных</p></div>';
+                    document.getElementById('topicsProgress').innerHTML = '<div class="card text-center"><p class="text-secondary">Пока нет данных</p></div>';
                 }
 
                 // Последние сессии
                 if (sessions.length > 0) {
-                    recentSessions.innerHTML = sessions.map(session => {
+                    document.getElementById('recentSessions').innerHTML = sessions.map(session => {
                         const startDate = new Date(session.started_at);
                         const formattedDate = startDate.toLocaleDateString('ru-RU', {
                             month: 'short',
@@ -150,14 +194,14 @@
                         `;
                     }).join('');
                 } else {
-                    recentSessions.innerHTML = '<div class="card text-center"><p class="text-secondary">Пока нет сессий</p></div>';
+                    document.getElementById('recentSessions').innerHTML = '<div class="card text-center"><p class="text-secondary">Пока нет сессий</p></div>';
                 }
 
                 // График активности
                 if (stats.daily_activity.length > 0) {
                     renderActivityChart(stats.daily_activity);
                 } else {
-                    activityContent.innerHTML = '<p class="text-center text-secondary">Пока нет активности</p>';
+                    document.getElementById('activityContent').innerHTML = '<p class="text-center text-secondary">Нет данных за последние 30 дней</p>';
                 }
 
                 loadingSpinner.classList.add('hidden');
@@ -168,15 +212,102 @@
             }
         }
 
-        // Простой график активности (текстовый)
+        // Knowledge Map по уровням
+        function renderKnowledgeMap(topics) {
+            const container = document.getElementById('knowledgeMap');
+            
+            // Подсчитываем вопросы по уровням (mock data - нужно расширить API)
+            const levels = [
+                { level: 1, name: 'Surface (L1)', color: '#10b981', percent: 0 },
+                { level: 2, name: 'Deeper (L2)', color: '#3b82f6', percent: 0 },
+                { level: 3, name: 'Expert (L3)', color: '#f59e0b', percent: 0 },
+                { level: 4, name: 'Master (L4)', color: '#ef4444', percent: 0 }
+            ];
+            
+            // Для demo - просто показываем общий прогресс
+            const avgProgress = topics.reduce((sum, t) => sum + t.progress_percent, 0) / (topics.length || 1);
+            
+            levels[0].percent = Math.min(100, avgProgress * 1.2);
+            levels[1].percent = Math.max(0, avgProgress - 10);
+            levels[2].percent = Math.max(0, avgProgress - 30);
+            levels[3].percent = Math.max(0, avgProgress - 50);
+            
+            container.innerHTML = levels.map(level => `
+                <div style="margin-bottom: 1.5rem;">
+                    <div class="flex-between mb-1">
+                        <div style="display: flex; align-items: center; gap: 0.75rem;">
+                            <div style="width: 12px; height: 12px; border-radius: 50%; background: ${level.color};"></div>
+                            <span style="font-weight: 600;">${level.name}</span>
+                        </div>
+                        <span style="font-weight: 600; color: ${level.color};">${Math.round(level.percent)}%</span>
+                    </div>
+                    <div class="progress-bar" style="height: 8px;">
+                        <div class="progress-fill" style="width: ${level.percent}%; background: ${level.color};"></div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // Weak Spots
+        function renderWeakSpots(topics) {
+            const weakTopics = topics.filter(t => t.progress_percent < 50 && t.total_questions > 0);
+            
+            if (weakTopics.length === 0) {
+                document.getElementById('weakSpotsSection').classList.add('hidden');
+                return;
+            }
+            
+            weakTopics.sort((a, b) => a.progress_percent - b.progress_percent);
+            
+            const weakSpotsList = document.getElementById('weakSpotsList');
+            weakSpotsList.innerHTML = weakTopics.slice(0, 3).map(topic => {
+                let recommendation = '';
+                if (topic.progress_percent === 0) {
+                    recommendation = 'Еще не начал эту тему. Начни с базовых вопросов!';
+                } else if (topic.progress_percent < 25) {
+                    recommendation = 'Мало практики. Уделяй 15-20 минут ежедневно.';
+                } else {
+                    recommendation = 'Почти половина! Продолжай в том же духе.';
+                }
+                
+                return `
+                    <div style="padding: 1.5rem; background: #fef3c7; border-left: 4px solid #f59e0b; border-radius: 0.5rem; margin-bottom: 1rem;">
+                        <div class="flex-between mb-2">
+                            <h3 style="font-weight: 600; color: #92400e;">${topic.name}</h3>
+                            <span style="font-weight: 600; color: #f59e0b;">${topic.progress_percent}%</span>
+                        </div>
+                        <p style="color: #78350f; margin-bottom: 1rem;">${recommendation}</p>
+                        <div class="flex gap-2">
+                            <a href="/practice?topic=${topic.id}" class="btn btn-primary" style="font-size: 0.875rem; padding: 0.5rem 1rem;">
+                                Начать практику
+                            </a>
+                            <button onclick="showTopicTips('${topic.name}')" class="btn btn-outline" style="font-size: 0.875rem; padding: 0.5rem 1rem;">
+                                Советы
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function showTopicTips(topicName) {
+            const tips = {
+                'Solidity Advanced': '• Начни с уязвимостей (reentrancy, overflow)\n• Практикуй CEI pattern\n• Изучай реальные exploits\n• Используй Remix для экспериментов',
+                'Python Web3 Development': '• Освой web3.py basics\n• Практикуй чтение контрактов\n• Научись подписывать транзакции\n• Разберись с events и filters',
+                'default': '• Уделяй 15-20 минут ежедневно\n• Начни с легких вопросов (Easy)\n• Записывай важные инсайты в заметки\n• Повторяй материал через spaced repetition'
+            };
+            
+            alert(tips[topicName] || tips['default']);
+        }
+
+        // График активности
         function renderActivityChart(activityData) {
             if (activityData.length === 0) {
-                activityContent.innerHTML = '<p class="text-center text-secondary">Нет данных за последние 30 дней</p>';
+                document.getElementById('activityContent').innerHTML = '<p class="text-center text-secondary">Нет данных</p>';
                 return;
             }
 
-            // Находим максимум для нормализации
-            const maxCount = Math.max(...activityData.map(d => d.count));
+            const maxCount = Math.max(...activityData.map(d => d.count), 1);
 
             const chartHtml = activityData.map(item => {
                 const date = new Date(item.date);
@@ -198,7 +329,7 @@
                 `;
             }).join('');
 
-            activityContent.innerHTML = chartHtml;
+            document.getElementById('activityContent').innerHTML = chartHtml;
         }
 
         // Инициализация
@@ -206,4 +337,3 @@
     </script>
 </body>
 </html>
-

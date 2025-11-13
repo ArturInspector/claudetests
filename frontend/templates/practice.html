@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Практика - Interview Practice Platform</title>
+    <title>Практика - Deep Learning Platform</title>
     <link rel="stylesheet" href="/static/style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
@@ -11,19 +11,20 @@
 <body>
     <header class="header">
         <div class="header-content">
-            <a href="/" class="logo">Interview Practice</a>
+            <a href="/" class="logo">Deep Learning Platform</a>
             <nav class="nav">
                 <a href="/">Главная</a>
                 <a href="/practice" class="active">Практика</a>
+                <a href="/review">Повторение</a>
                 <a href="/stats">Статистика</a>
             </nav>
         </div>
     </header>
 
-    <main class="container-narrow">
+    <main style="max-width: 1400px; margin: 0 auto; padding: 2rem;">
         <!-- Выбор темы -->
         <div id="topicSelection" class="mb-4">
-            <h1>Выбери тему для практики</h1>
+            <h1 style="font-size: 2rem; margin-bottom: 1rem;">Выбери тему для практики</h1>
             
             <div id="topicsList" class="grid grid-2">
                 <!-- Темы загружаются динамически -->
@@ -31,51 +32,113 @@
         </div>
 
         <!-- Область практики -->
-        <div id="practiceArea" class="hidden">
-            <!-- Информация о сессии -->
-            <div class="flex-between mb-4" style="flex-wrap: wrap; gap: 1rem;">
-                <div>
-                    <h2 id="topicName"></h2>
-                    <p class="text-secondary" style="margin-top: 0.25rem;">
-                        Вопросов пройдено: <span id="questionsCount" style="font-weight: 600; color: var(--accent-color);">0</span>
+        <div id="practiceArea" class="hidden" style="display: grid; grid-template-columns: 1fr 300px; gap: 2rem;">
+            <!-- Основной контент -->
+            <div>
+                <!-- Информация о сессии + Таймер -->
+                <div class="flex-between mb-4">
+                    <div>
+                        <h2 id="topicName" style="margin-bottom: 0.25rem;"></h2>
+                        <p class="text-secondary">
+                            Вопросов: <span id="questionsCount">0</span> | 
+                            Время: <span id="timer">00:00</span>
+                        </p>
+                    </div>
+                    <button id="endSessionBtn" class="btn btn-secondary">Завершить сессию</button>
+                </div>
+
+                <!-- Вопрос -->
+                <div id="questionContainer" class="question-container">
+                    <div class="question-header">
+                        <div>
+                            <h3 id="questionTitle" style="margin-bottom: 0.5rem;"></h3>
+                            <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                                <span id="levelBadge" class="badge badge-level"></span>
+                                <span id="difficultyBadge" class="difficulty-badge"></span>
+                                <div id="tagsBadges"></div>
+                            </div>
+                        </div>
+                        <div id="questionTimer" style="font-size: 1.5rem; font-weight: 600; color: var(--accent-color);">00:00</div>
+                    </div>
+                    
+                    <div id="questionText" style="line-height: 1.8; margin-top: 1.5rem;"></div>
+                </div>
+
+                <!-- Область ответа -->
+                <div class="mb-4">
+                    <label style="display: block; font-weight: 600; margin-bottom: 0.75rem;">
+                        Твой ответ:
+                    </label>
+                    <textarea id="userAnswer" placeholder="Напиши свой ответ здесь..."></textarea>
+                </div>
+
+                <!-- Кнопки действий -->
+                <div class="flex gap-2 mb-4">
+                    <button id="showAnswerBtn" class="btn btn-primary">Показать ответ</button>
+                    <button id="nextQuestionBtn" class="btn btn-secondary">Следующий вопрос</button>
+                </div>
+
+                <!-- Правильный ответ -->
+                <div id="answerSection" class="answer-section hidden">
+                    <div class="answer-header">✅ Правильный ответ:</div>
+                    <div id="answerText"></div>
+                    
+                    <!-- Confidence Rating -->
+                    <div class="mt-4" style="padding-top: 1.5rem; border-top: 1px solid var(--border-color);">
+                        <label style="display: block; margin-bottom: 0.75rem; font-weight: 600;">
+                            Насколько уверен в ответе?
+                        </label>
+                        <div id="confidenceRating" style="display: flex; gap: 0.5rem;">
+                            <button class="confidence-btn" data-level="1">★</button>
+                            <button class="confidence-btn" data-level="2">★★</button>
+                            <button class="confidence-btn" data-level="3">★★★</button>
+                            <button class="confidence-btn" data-level="4">★★★★</button>
+                            <button class="confidence-btn" data-level="5">★★★★★</button>
+                        </div>
+                        <p class="text-secondary" style="font-size: 0.875rem; margin-top: 0.5rem;">
+                            1 - не понял, 5 - полностью понял
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Ресурсы -->
+                <div id="resourcesSection" class="card mt-4 hidden">
+                    <h3 style="margin-bottom: 1rem;">📚 Дополнительные материалы</h3>
+                    <div id="resourcesList"></div>
+                </div>
+
+                <!-- Заметки -->
+                <div class="card mt-4">
+                    <h3 style="margin-bottom: 0.75rem;">📝 Твои заметки</h3>
+                    <p class="text-secondary" style="font-size: 0.875rem; margin-bottom: 0.75rem;">
+                        Записывай важные инсайты и мысли (автосохранение)
                     </p>
+                    <textarea id="userNotes" 
+                              placeholder="Твои заметки к этому вопросу..."
+                              style="min-height: 100px;"
+                              ></textarea>
+                    <div id="notesSaveStatus" class="text-secondary" style="font-size: 0.75rem; margin-top: 0.5rem;"></div>
                 </div>
-                <button id="endSessionBtn" class="btn btn-secondary">Завершить сессию</button>
             </div>
 
-            <!-- Вопрос -->
-            <div id="questionContainer" class="question-container">
-                <div class="question-header">
-                    <h3 id="questionTitle"></h3>
-                    <span id="difficultyBadge" class="difficulty-badge"></span>
+            <!-- Sidebar -->
+            <div>
+                <!-- Progressive Disclosure -->
+                <div id="progressiveDisclosure" class="card mb-4 hidden">
+                    <h3 style="font-size: 1rem; margin-bottom: 1rem;">🎯 Уровни понимания</h3>
+                    <div id="levelsList"></div>
                 </div>
-                
-                <div id="questionText" style="line-height: 1.8;"></div>
-            </div>
 
-            <!-- Область ответа -->
-            <div class="mb-4">
-                <label for="userAnswer" style="display: block; font-weight: 600; margin-bottom: 0.75rem; color: var(--text-primary);">
-                    Твой ответ:
-                </label>
-                <textarea id="userAnswer" placeholder="Напиши свой ответ здесь... Используй этот блок для подготовки ответа перед тем, как посмотреть правильный вариант."></textarea>
-            </div>
-
-            <!-- Кнопки действий -->
-            <div class="flex gap-2 mb-4" style="flex-wrap: wrap;">
-                <button id="showAnswerBtn" class="btn btn-primary">✓ Показать правильный ответ</button>
-                <button id="nextQuestionBtn" class="btn btn-secondary">→ Следующий вопрос</button>
-            </div>
-
-            <!-- Правильный ответ (скрыт по умолчанию) -->
-            <div id="answerSection" class="answer-section hidden">
-                <div class="answer-header">✅ Правильный ответ:</div>
-                <div id="answerText"></div>
+                <!-- Related Concepts -->
+                <div id="relatedConcepts" class="card hidden">
+                    <h3 style="font-size: 1rem; margin-bottom: 1rem;">🔗 Связанные темы</h3>
+                    <div id="relatedList"></div>
+                </div>
             </div>
         </div>
 
         <!-- Summary сессии -->
-        <div id="summarySection" class="hidden">
+        <div id="summarySection" class="hidden" style="max-width: 800px; margin: 0 auto;">
             <div style="text-align: center; margin-bottom: 2rem;">
                 <h1 style="font-size: 2.25rem;">🎉 Сессия завершена!</h1>
                 <p class="text-secondary" style="font-size: 1.125rem; margin-top: 0.5rem;">
@@ -84,18 +147,15 @@
             </div>
             
             <div class="card mb-4">
-                <h3 class="card-title mb-2">Статистика сессии:</h3>
-                <div id="summaryContent" style="font-size: 1rem;"></div>
+                <h3 class="card-title mb-2">Статистика:</h3>
+                <div id="summaryContent"></div>
             </div>
 
-            <div style="margin-bottom: 1rem;">
-                <h3 style="margin-bottom: 0.75rem;">Сводка по теме:</h3>
-            </div>
             <div class="summary-box" id="summaryText"></div>
 
-            <div class="flex gap-2" style="flex-wrap: wrap; margin-top: 2rem;">
-                <button id="copySummaryBtn" class="btn btn-primary">📋 Копировать сводку</button>
-                <a href="/practice" class="btn btn-secondary">🔄 Начать новую сессию</a>
+            <div class="flex gap-2" style="margin-top: 2rem;">
+                <button id="copySummaryBtn" class="btn btn-primary">📋 Копировать</button>
+                <a href="/practice" class="btn btn-secondary">Начать новую сессию</a>
             </div>
         </div>
 
@@ -111,10 +171,11 @@
         let currentTopic = null;
         let currentQuestion = null;
         let questionsAnswered = 0;
-
-        // Получаем topic из URL параметров
-        const urlParams = new URLSearchParams(window.location.search);
-        const topicIdFromUrl = urlParams.get('topic');
+        let questionStartTime = null;
+        let sessionStartTime = null;
+        let timerInterval = null;
+        let questionTimerInterval = null;
+        let noteSaveTimeout = null;
 
         // Элементы DOM
         const topicSelection = document.getElementById('topicSelection');
@@ -122,15 +183,17 @@
         const summarySection = document.getElementById('summarySection');
         const loadingSpinner = document.getElementById('loadingSpinner');
         
-        const topicsList = document.getElementById('topicsList');
         const topicName = document.getElementById('topicName');
         const questionsCount = document.getElementById('questionsCount');
         const questionTitle = document.getElementById('questionTitle');
+        const levelBadge = document.getElementById('levelBadge');
         const difficultyBadge = document.getElementById('difficultyBadge');
+        const tagsBadges = document.getElementById('tagsBadges');
         const questionText = document.getElementById('questionText');
         const userAnswer = document.getElementById('userAnswer');
         const answerSection = document.getElementById('answerSection');
         const answerText = document.getElementById('answerText');
+        const userNotes = document.getElementById('userNotes');
         
         const showAnswerBtn = document.getElementById('showAnswerBtn');
         const nextQuestionBtn = document.getElementById('nextQuestionBtn');
@@ -138,6 +201,9 @@
 
         // Инициализация
         async function init() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const topicIdFromUrl = urlParams.get('topic');
+
             if (topicIdFromUrl) {
                 await startPractice(parseInt(topicIdFromUrl));
             } else {
@@ -151,11 +217,11 @@
                 const topics = await API.getTopics();
                 
                 if (topics.length === 0) {
-                    topicsList.innerHTML = '<div class="card text-center"><p class="text-secondary">Темы не найдены. Импортируй вопросы на главной странице.</p></div>';
+                    document.getElementById('topicsList').innerHTML = '<div class="card text-center"><p class="text-secondary">Темы не найдены</p></div>';
                     return;
                 }
 
-                topicsList.innerHTML = topics.map(topic => `
+                document.getElementById('topicsList').innerHTML = topics.map(topic => `
                     <div class="card">
                         <h3 class="card-title">${topic.name}</h3>
                         <p class="text-secondary mb-2">Вопросов: ${topic.question_count}</p>
@@ -170,27 +236,54 @@
         // Начало практики
         async function startPractice(topicId) {
             try {
-                // Создаем новую сессию
                 const session = await API.startSession();
                 currentSession = session.session_id;
                 currentTopic = topicId;
                 questionsAnswered = 0;
+                sessionStartTime = Date.now();
 
-                // Получаем информацию о теме
                 const topics = await API.getTopics();
                 const topic = topics.find(t => t.id === topicId);
                 topicName.textContent = topic.name;
 
-                // Переключаем интерфейс
                 topicSelection.classList.add('hidden');
                 practiceArea.classList.remove('hidden');
+                practiceArea.style.display = 'grid';
 
-                // Загружаем первый вопрос
+                startSessionTimer();
                 await loadNextQuestion();
-
             } catch (error) {
                 showNotification('Ошибка начала сессии', 'error');
             }
+        }
+
+        // Таймеры
+        function startSessionTimer() {
+            timerInterval = setInterval(() => {
+                const elapsed = Math.floor((Date.now() - sessionStartTime) / 1000);
+                document.getElementById('timer').textContent = formatTime(elapsed);
+            }, 1000);
+        }
+
+        function startQuestionTimer() {
+            questionStartTime = Date.now();
+            questionTimerInterval = setInterval(() => {
+                const elapsed = Math.floor((Date.now() - questionStartTime) / 1000);
+                document.getElementById('questionTimer').textContent = formatTime(elapsed);
+            }, 1000);
+        }
+
+        function stopQuestionTimer() {
+            if (questionTimerInterval) {
+                clearInterval(questionTimerInterval);
+            }
+            return questionStartTime ? Math.floor((Date.now() - questionStartTime) / 1000) : 0;
+        }
+
+        function formatTime(seconds) {
+            const mins = Math.floor(seconds / 60);
+            const secs = seconds % 60;
+            return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
         }
 
         // Загрузка следующего вопроса
@@ -199,29 +292,55 @@
                 loadingSpinner.classList.remove('hidden');
                 answerSection.classList.add('hidden');
                 userAnswer.value = '';
+                userNotes.value = '';
 
                 const question = await API.getQuestion(currentTopic, null, currentSession);
                 currentQuestion = question;
 
                 questionTitle.textContent = question.title;
+                
+                // Level badge
+                levelBadge.textContent = `Level ${question.level || 1}`;
+                levelBadge.className = `badge badge-level badge-level-${question.level || 1}`;
+                
+                // Difficulty
                 difficultyBadge.textContent = question.difficulty;
                 difficultyBadge.className = `difficulty-badge ${Utils.getDifficultyClass(question.difficulty)}`;
                 
-                // Парсим markdown в questionText
-                questionText.innerHTML = parseMarkdownToHtml(question.question_text);
+                // Tags
+                if (question.tags && question.tags.length > 0) {
+                    tagsBadges.innerHTML = question.tags.map(tag => 
+                        `<span class="badge badge-tag">${tag}</span>`
+                    ).join('');
+                } else {
+                    tagsBadges.innerHTML = '';
+                }
                 
-                // Подсветка кода
+                questionText.innerHTML = parseMarkdownToHtml(question.question_text);
                 questionText.querySelectorAll('pre code').forEach((block) => {
                     hljs.highlightElement(block);
                 });
 
+                // Загружаем ресурсы
+                await loadResources(question.id);
+                
+                // Загружаем заметки
+                await loadNotes(question.id);
+                
+                // Загружаем related concepts
+                await loadRelatedConcepts(question.id);
+                
+                // Загружаем progressive disclosure
+                await loadProgressiveDisclosure(question.id);
+
                 loadingSpinner.classList.add('hidden');
+                startQuestionTimer();
 
             } catch (error) {
                 loadingSpinner.classList.add('hidden');
                 
                 if (error.message.includes('все вопросы пройдены')) {
-                    showNotification('Все вопросы по теме пройдены!', 'success');
+                    showNotification('Все вопросы пройдены!', 'success');
                     await endSession();
                 } else {
                     showNotification('Ошибка загрузки вопроса', 'error');
@@ -229,40 +348,219 @@
             }
         }
 
+        // Загрузка ресурсов
+        async function loadResources(questionId) {
+            try {
+                const response = await fetch(`/api/resources/${questionId}`);
+                const resources = await response.json();
+                
+                if (resources.length > 0) {
+                    const resourcesSection = document.getElementById('resourcesSection');
+                    const resourcesList = document.getElementById('resourcesList');
+                    
+                    resourcesList.innerHTML = resources.map(r => `
+                        <div style="margin-bottom: 1rem; padding-bottom: 1rem; border-bottom: 1px solid var(--border-color);">
+                            <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem;">
+                                <span class="badge badge-resource">${getResourceIcon(r.type)} ${r.type}</span>
+                                <strong>${r.title}</strong>
+                            </div>
+                            <a href="${r.url}" target="_blank" style="color: var(--accent-color); font-size: 0.875rem; word-break: break-all;">
+                                ${r.url}
+                            </a>
+                        </div>
+                    `).join('');
+                    
+                    resourcesSection.classList.remove('hidden');
+                } else {
+                    document.getElementById('resourcesSection').classList.add('hidden');
+                }
+            } catch (error) {
+                console.error('Error loading resources:', error);
+            }
+        }
+
+        function getResourceIcon(type) {
+            const icons = {
+                'video': '🎥',
+                'article': '📖',
+                'code': '💻',
+                'tool': '🔧',
+                'docs': '📄'
+            };
+            return icons[type] || '📎';
+        }
+
+        // Загрузка заметок
+        async function loadNotes(questionId) {
+            try {
+                const response = await fetch(`/api/notes/${questionId}`);
+                const note = await response.json();
+                userNotes.value = note.note_text || '';
+            } catch (error) {
+                console.error('Error loading notes:', error);
+            }
+        }
+
+        // Автосохранение заметок
+        userNotes.addEventListener('input', () => {
+            clearTimeout(noteSaveTimeout);
+            document.getElementById('notesSaveStatus').textContent = 'Сохранение...';
+            
+            noteSaveTimeout = setTimeout(async () => {
+                try {
+                    await fetch('/api/notes', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({
+                            question_id: currentQuestion.id,
+                            note_text: userNotes.value
+                        })
+                    });
+                    document.getElementById('notesSaveStatus').textContent = '✓ Сохранено';
+                    setTimeout(() => {
+                        document.getElementById('notesSaveStatus').textContent = '';
+                    }, 2000);
+                } catch (error) {
+                    document.getElementById('notesSaveStatus').textContent = '✗ Ошибка';
+                }
+            }, 1000);
+        });
+
+        // Загрузка related concepts
+        async function loadRelatedConcepts(questionId) {
+            try {
+                const response = await fetch(`/api/questions/${questionId}/related`);
+                const related = await response.json();
+                
+                if (Object.keys(related).length > 0) {
+                    const relatedSection = document.getElementById('relatedConcepts');
+                    const relatedList = document.getElementById('relatedList');
+                    
+                    let html = '';
+                    for (const [type, questions] of Object.entries(related)) {
+                        html += `<div style="margin-bottom: 1rem;">
+                            <div style="font-weight: 600; font-size: 0.875rem; margin-bottom: 0.5rem; text-transform: capitalize;">${type}:</div>`;
+                        questions.forEach(q => {
+                            html += `<div style="padding: 0.5rem; background: var(--bg-secondary); border-radius: 0.375rem; margin-bottom: 0.5rem; font-size: 0.875rem;">
+                                <div>${q.title}</div>
+                                <div style="color: var(--text-secondary); font-size: 0.75rem;">Level ${q.level} • ${q.difficulty}</div>
+                            </div>`;
+                        });
+                        html += '</div>';
+                    }
+                    
+                    relatedList.innerHTML = html;
+                    relatedSection.classList.remove('hidden');
+                } else {
+                    document.getElementById('relatedConcepts').classList.add('hidden');
+                }
+            } catch (error) {
+                console.error('Error loading related:', error);
+            }
+        }
+
+        // Progressive Disclosure
+        async function loadProgressiveDisclosure(questionId) {
+            try {
+                const response = await fetch(`/api/questions/${questionId}/children`);
+                const children = await response.json();
+                
+                if (children.length > 0) {
+                    const section = document.getElementById('progressiveDisclosure');
+                    const list = document.getElementById('levelsList');
+                    
+                    list.innerHTML = children.map((q, idx) => `
+                        <div style="padding: 0.75rem; background: var(--bg-secondary); border-radius: 0.375rem; margin-bottom: 0.5rem; cursor: pointer;"
+                             onclick="loadSpecificQuestion(${q.id})">
+                            <div style="font-weight: 600; font-size: 0.875rem;">Level ${q.level}: ${q.title}</div>
+                            <div style="color: var(--text-secondary); font-size: 0.75rem; margin-top: 0.25rem;">${q.difficulty}</div>
+                        </div>
+                    `).join('');
+                    
+                    section.classList.remove('hidden');
+                } else {
+                    document.getElementById('progressiveDisclosure').classList.add('hidden');
+                }
+            } catch (error) {
+                console.error('Error loading progressive disclosure:', error);
+            }
+        }
+
         // Показать ответ
         showAnswerBtn.addEventListener('click', async () => {
+            const timeSpent = stopQuestionTimer();
+            
             try {
-                // Сохраняем ответ пользователя
+                // Сохраняем ответ с showed_answer = true
                 if (userAnswer.value.trim()) {
-                    await API.submitAnswer(currentQuestion.id, userAnswer.value, currentSession);
+                    await API.submitAnswer(
+                        currentQuestion.id,
+                        userAnswer.value,
+                        currentSession,
+                        timeSpent,
+                        true,  // showed_answer
+                        null   // confidence пока не выбрана
+                    );
                     questionsAnswered++;
                     questionsCount.textContent = questionsAnswered;
                 }
 
                 // Загружаем правильный ответ
-                const questionWithAnswer = await API.getQuestionWithAnswer(currentQuestion.id);
+                const questionWithAnswer = await fetch(`/api/question/${currentQuestion.id}/answer`).then(r => r.json());
                 
                 answerText.innerHTML = parseMarkdownToHtml(questionWithAnswer.answer_text);
-                
-                // Подсветка кода в ответе
                 answerText.querySelectorAll('pre code').forEach((block) => {
                     hljs.highlightElement(block);
                 });
                 
                 answerSection.classList.remove('hidden');
+                
+                // Setup confidence rating
+                setupConfidenceRating(timeSpent);
 
             } catch (error) {
                 showNotification('Ошибка загрузки ответа', 'error');
             }
         });
 
+        // Confidence Rating
+        function setupConfidenceRating(timeSpent) {
+            const buttons = document.querySelectorAll('.confidence-btn');
+            buttons.forEach(btn => {
+                btn.onclick = async () => {
+                    const level = parseInt(btn.dataset.level);
+                    
+                    // Визуальный feedback
+                    buttons.forEach(b => b.style.background = 'var(--bg-secondary)');
+                    btn.style.background = 'var(--accent-color)';
+                    btn.style.color = 'white';
+                    
+                    // Сохраняем с confidence
+                    try {
+                        await API.submitAnswer(
+                            currentQuestion.id,
+                            userAnswer.value,
+                            currentSession,
+                            timeSpent,
+                            true,
+                            level
+                        );
+                        showNotification(`Confidence ${level}/5 сохранен`, 'success');
+                    } catch (error) {
+                        showNotification('Ошибка сохранения', 'error');
+                    }
+                };
+            });
+        }
+
         // Следующий вопрос
         nextQuestionBtn.addEventListener('click', async () => {
-            // Сохраняем ответ если еще не сохранили
+            const timeSpent = stopQuestionTimer();
+            
             if (!answerSection.classList.contains('hidden') && userAnswer.value.trim()) {
-                // Ответ уже сохранен при показе правильного ответа
+                // Уже сохранили при показе ответа
             } else if (userAnswer.value.trim()) {
-                await API.submitAnswer(currentQuestion.id, userAnswer.value, currentSession);
+                await API.submitAnswer(currentQuestion.id, userAnswer.value, currentSession, timeSpent, false, null);
                 questionsAnswered++;
                 questionsCount.textContent = questionsAnswered;
             }
@@ -272,19 +570,21 @@
 
         // Завершить сессию
         endSessionBtn.addEventListener('click', async () => {
-            if (confirm('Завершить сессию? Ты увидишь статистику.')) {
+            if (confirm('Завершить сессию?')) {
                 await endSession();
             }
         });
 
         async function endSession() {
             try {
+                clearInterval(timerInterval);
+                stopQuestionTimer();
+                
                 loadingSpinner.classList.remove('hidden');
                 
                 const result = await API.endSession(currentSession);
                 
-                // Показываем summary
-                practiceArea.classList.add('hidden');
+                practiceArea.style.display = 'none';
                 loadingSpinner.classList.add('hidden');
                 summarySection.classList.remove('hidden');
 
@@ -295,14 +595,9 @@
 
                 document.getElementById('summaryText').textContent = result.summary;
 
-                // Обработчик копирования
                 document.getElementById('copySummaryBtn').addEventListener('click', async () => {
                     const success = await copyToClipboard(result.summary);
-                    if (success) {
-                        showNotification('Скопировано в буфер обмена!', 'success');
-                    } else {
-                        showNotification('Ошибка копирования', 'error');
-                    }
+                    showNotification(success ? 'Скопировано!' : 'Ошибка', success ? 'success' : 'error');
                 });
 
             } catch (error) {
@@ -311,17 +606,13 @@
             }
         }
 
-        // Парсинг markdown в HTML
+        // Парсинг markdown
         function parseMarkdownToHtml(text) {
-            // Обработка code blocks
             let html = text.replace(/```(\w+)?\n([\s\S]*?)```/g, (match, lang, code) => {
                 return `<pre><code class="language-${lang || 'text'}">${escapeHtml(code.trim())}</code></pre>`;
             });
             
-            // Inline code
             html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
-            
-            // Переносы строк
             html = html.replace(/\n\n/g, '</p><p>');
             html = html.replace(/\n/g, '<br>');
             html = '<p>' + html + '</p>';
@@ -338,6 +629,57 @@
         // Запуск
         init();
     </script>
+
+    <style>
+        .badge {
+            padding: 0.25rem 0.75rem;
+            border-radius: 0.375rem;
+            font-size: 0.875rem;
+            font-weight: 500;
+            display: inline-block;
+        }
+
+        .badge-level {
+            background: var(--accent-color);
+            color: white;
+        }
+
+        .badge-level-1 { background: #10b981; color: white; }
+        .badge-level-2 { background: #3b82f6; color: white; }
+        .badge-level-3 { background: #f59e0b; color: white; }
+        .badge-level-4 { background: #ef4444; color: white; }
+
+        .badge-tag {
+            background: var(--bg-secondary);
+            color: var(--text-secondary);
+            border: 1px solid var(--border-color);
+        }
+
+        .badge-resource {
+            background: #ede9fe;
+            color: #6b21a8;
+        }
+
+        .confidence-btn {
+            padding: 0.75rem 1.5rem;
+            background: var(--bg-secondary);
+            border: 2px solid var(--border-color);
+            border-radius: 0.5rem;
+            cursor: pointer;
+            font-size: 1.25rem;
+            transition: all 0.2s;
+        }
+
+        .confidence-btn:hover {
+            background: var(--bg-hover);
+            transform: scale(1.05);
+        }
+
+        @media (max-width: 1024px) {
+            #practiceArea {
+                grid-template-columns: 1fr !important;
+            }
+        }
+    </style>
 </body>
 </html>
-

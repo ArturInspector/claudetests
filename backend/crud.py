@@ -1,10 +1,10 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
 from typing import List, Optional, Dict
-from datetime import datetime
+from datetime import datetime, timedelta
 import random
 
-from database import Topic, Question, UserAnswer, Session as DBSession
+from database import Topic, Question, UserAnswer, Session as DBSession, Resource, UserNote, ConceptLink
 
 
 # ==================== TOPICS ====================
@@ -39,7 +39,11 @@ def create_question(
     difficulty: str,
     question_type: str,
     question_text: str,
-    answer_text: str
+    answer_text: str,
+    level: int = 1,
+    parent_concept_id: int = None,
+    tags: List[str] = None,
+    estimated_time: int = None
 ) -> Question:
     """Создать новый вопрос"""
     question = Question(
@@ -48,7 +52,11 @@ def create_question(
         difficulty=difficulty,
         question_type=question_type,
         question_text=question_text,
-        answer_text=answer_text
+        answer_text=answer_text,
+        level=level,
+        parent_concept_id=parent_concept_id,
+        tags=tags,
+        estimated_time=estimated_time
     )
     db.add(question)
     db.commit()
@@ -99,13 +107,24 @@ def save_user_answer(
     db: Session,
     question_id: int,
     user_answer: str,
-    session_id: int = None
+    session_id: int = None,
+    time_spent: int = None,
+    showed_answer: bool = False,
+    confidence_level: int = None
 ) -> UserAnswer:
-    """Сохранить ответ пользователя"""
+    """Сохранить ответ пользователя с расширенной аналитикой"""
+    # Вычисляем next_review_date на основе confidence и showed_answer
+    next_review = calculate_next_review_date(confidence_level, showed_answer)
+    
     answer = UserAnswer(
         question_id=question_id,
         user_answer=user_answer,
-        session_id=session_id
+        session_id=session_id,
+        time_spent=time_spent,
+        showed_answer=showed_answer,
+        confidence_level=confidence_level,
+        next_review_date=next_review,
+        review_count=1
     )
     db.add(answer)
     db.commit()
@@ -228,4 +247,246 @@ def get_statistics(db: Session) -> Dict:
         "topics": topics_stats,
         "daily_activity": activity_data
     }
+
+
+# ==================== SPACED REPETITION ====================
+
+def calculate_next_review_date(confidence_level: Optional[int] = None, showed_answer: bool = False) -> datetime:
+    """
+    Вычисляет следующую дату повторения на основе confidence level
+    
+    Алгоритм (упрощенный SM-2):
+    - Показал ответ сразу: 1 день
+    - Confidence 1-2: 1 день
+    - Confidence 3: 3 дня
+    - Confidence 4: 7 дней
+    - Confidence 5: 14 дней
+    """
+    now = datetime.utcnow()
+    
+    if showed_answer or confidence_level is None or confidence_level < 3:
+        return now + timedelta(days=1)
+    elif confidence_level == 3:
+        return now + timedelta(days=3)
+    elif confidence_level == 4:
+        return now + timedelta(days=7)
+    else:  # confidence_level == 5
+        return now + timedelta(days=14)
+
+
+def get_questions_for_review(db: Session, limit: int = 20) -> List[Question]:
+    """
+    Получить вопросы на повторение сегодня
+    Sorted по срочности (overdue first)
+    """
+    now = datetime.utcnow()
+    
+    # Получаем последние ответы на вопросы где next_review_date <= now
+    subquery = db.query(
+        UserAnswer.question_id,
+        func.max(UserAnswer.answered_at).label('last_answered')
+    ).group_by(UserAnswer.question_id).subquery()
+    
+    questions_to_review = db.query(Question).join(
+        UserAnswer, Question.id == UserAnswer.question_id
+    ).join(
+        subquery, 
+        (UserAnswer.question_id == subquery.c.question_id) & 
+        (UserAnswer.answered_at == subquery.c.last_answered)
+    ).filter(
+        UserAnswer.next_review_date <= now
+    ).order_by(
+        UserAnswer.next_review_date
+    ).limit(limit).all()
+    
+    return questions_to_review
+
+
+def update_review_status(
+    db: Session,
+    question_id: int,
+    confidence_level: int,
+    time_spent: int = None
+) -> UserAnswer:
+    """Обновить статус повторения вопроса"""
+    # Получаем последний ответ на этот вопрос
+    last_answer = db.query(UserAnswer).filter(
+        UserAnswer.question_id == question_id
+    ).order_by(desc(UserAnswer.answered_at)).first()
+    
+    # Увеличиваем review_count
+    review_count = (last_answer.review_count + 1) if last_answer else 1
+    
+    # Вычисляем следующую дату с учетом количества повторений
+    base_interval = calculate_next_review_date(confidence_level, False)
+    # Увеличиваем интервал с каждым повторением
+    interval_multiplier = min(review_count, 5)  # Макс 5x
+    next_review = base_interval + timedelta(days=(interval_multiplier - 1) * 3)
+    
+    # Создаем новую запись ответа (для истории)
+    new_answer = UserAnswer(
+        question_id=question_id,
+        user_answer="",  # При review не сохраняем ответ
+        confidence_level=confidence_level,
+        next_review_date=next_review,
+        review_count=review_count,
+        time_spent=time_spent,
+        showed_answer=False
+    )
+    db.add(new_answer)
+    db.commit()
+    db.refresh(new_answer)
+    return new_answer
+
+
+def get_review_stats(db: Session) -> Dict:
+    """Получить статистику по повторениям"""
+    now = datetime.utcnow()
+    
+    # Вопросы на сегодня
+    today_count = db.query(func.count(func.distinct(UserAnswer.question_id))).filter(
+        UserAnswer.next_review_date <= now
+    ).scalar()
+    
+    # Вопросы на завтра
+    tomorrow = now + timedelta(days=1)
+    tomorrow_count = db.query(func.count(func.distinct(UserAnswer.question_id))).filter(
+        UserAnswer.next_review_date > now,
+        UserAnswer.next_review_date <= tomorrow
+    ).scalar()
+    
+    # Всего вопросов в системе повторений
+    total_in_review = db.query(func.count(func.distinct(UserAnswer.question_id))).filter(
+        UserAnswer.next_review_date.isnot(None)
+    ).scalar()
+    
+    return {
+        "due_today": today_count or 0,
+        "due_tomorrow": tomorrow_count or 0,
+        "total_in_review": total_in_review or 0
+    }
+
+
+# ==================== RESOURCES ====================
+
+def create_resource(
+    db: Session,
+    question_id: int,
+    type: str,
+    title: str,
+    url: str,
+    description: str = None
+) -> Resource:
+    """Создать ресурс для вопроса"""
+    resource = Resource(
+        question_id=question_id,
+        type=type,
+        title=title,
+        url=url,
+        description=description
+    )
+    db.add(resource)
+    db.commit()
+    db.refresh(resource)
+    return resource
+
+
+def get_resources_by_question(db: Session, question_id: int) -> List[Resource]:
+    """Получить все ресурсы для вопроса"""
+    return db.query(Resource).filter(Resource.question_id == question_id).all()
+
+
+# ==================== USER NOTES ====================
+
+def save_or_update_note(db: Session, question_id: int, note_text: str) -> UserNote:
+    """Сохранить или обновить заметку к вопросу"""
+    note = db.query(UserNote).filter(UserNote.question_id == question_id).first()
+    
+    if note:
+        note.note_text = note_text
+        note.updated_at = datetime.utcnow()
+    else:
+        note = UserNote(
+            question_id=question_id,
+            note_text=note_text
+        )
+        db.add(note)
+    
+    db.commit()
+    db.refresh(note)
+    return note
+
+
+def get_note_by_question(db: Session, question_id: int) -> Optional[UserNote]:
+    """Получить заметку по вопросу"""
+    return db.query(UserNote).filter(UserNote.question_id == question_id).first()
+
+
+def delete_note(db: Session, question_id: int) -> bool:
+    """Удалить заметку"""
+    note = db.query(UserNote).filter(UserNote.question_id == question_id).first()
+    if note:
+        db.delete(note)
+        db.commit()
+        return True
+    return False
+
+
+# ==================== CONCEPT LINKS ====================
+
+def create_concept_link(
+    db: Session,
+    from_question_id: int,
+    to_question_id: int,
+    relationship_type: str
+) -> ConceptLink:
+    """Создать связь между вопросами"""
+    link = ConceptLink(
+        from_question_id=from_question_id,
+        to_question_id=to_question_id,
+        relationship_type=relationship_type
+    )
+    db.add(link)
+    db.commit()
+    db.refresh(link)
+    return link
+
+
+def get_related_questions(db: Session, question_id: int) -> Dict[str, List[Question]]:
+    """Получить связанные вопросы, сгруппированные по типу связи"""
+    links = db.query(ConceptLink).filter(
+        (ConceptLink.from_question_id == question_id) | 
+        (ConceptLink.to_question_id == question_id)
+    ).all()
+    
+    related = {}
+    for link in links:
+        # Определяем направление связи
+        if link.from_question_id == question_id:
+            related_id = link.to_question_id
+        else:
+            related_id = link.from_question_id
+        
+        question = get_question_by_id(db, related_id)
+        if question:
+            if link.relationship_type not in related:
+                related[link.relationship_type] = []
+            related[link.relationship_type].append(question)
+    
+    return related
+
+
+def get_questions_by_level(db: Session, topic_id: int, level: int) -> List[Question]:
+    """Получить вопросы определенного уровня по теме"""
+    return db.query(Question).filter(
+        Question.topic_id == topic_id,
+        Question.level == level
+    ).all()
+
+
+def get_concept_children(db: Session, parent_concept_id: int) -> List[Question]:
+    """Получить подвопросы концепта (для progressive disclosure)"""
+    return db.query(Question).filter(
+        Question.parent_concept_id == parent_concept_id
+    ).order_by(Question.level).all()
 

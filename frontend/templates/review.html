@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Повторение - Deep Learning Platform</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+</head>
+<body>
+    <header class="header">
+        <div class="header-content">
+            <a href="/" class="logo">Deep Learning Platform</a>
+            <nav class="nav">
+                <a href="/">Главная</a>
+                <a href="/practice">Практика</a>
+                <a href="/review" class="active">Повторение</a>
+                <a href="/stats">Статистика</a>
+            </nav>
+        </div>
+    </header>
+
+    <main class="container-narrow">
+        <!-- Review Dashboard -->
+        <div id="reviewDashboard">
+            <h1 style="font-size: 2.5rem; margin-bottom: 0.5rem;">🔄 Spaced Repetition</h1>
+            <p class="text-secondary" style="font-size: 1.125rem; margin-bottom: 2rem;">
+                Повторяй материал в оптимальные интервалы для максимального запоминания
+            </p>
+
+            <!-- Статистика -->
+            <div class="grid grid-2 mb-4">
+                <div class="stat-card">
+                    <div class="stat-value" id="dueTodayCount">0</div>
+                    <div class="stat-label">На сегодня</div>
+                </div>
+                
+                <div class="stat-card">
+                    <div class="stat-value" id="dueTomorrowCount">0</div>
+                    <div class="stat-label">На завтра</div>
+                </div>
+                
+                <div class="stat-card">
+                    <div class="stat-value" id="totalInReviewCount">0</div>
+                    <div class="stat-label">Всего в системе</div>
+                </div>
+                
+                <div class="stat-card">
+                    <div class="stat-value" id="reviewedTodayCount">0</div>
+                    <div class="stat-label">Повторено сегодня</div>
+                </div>
+            </div>
+
+            <!-- Кнопка начала -->
+            <div class="text-center mb-4">
+                <button id="startReviewBtn" class="btn btn-primary" style="padding: 1rem 3rem; font-size: 1.125rem;">
+                    Начать повторение
+                </button>
+            </div>
+
+            <!-- Список вопросов на повторение -->
+            <div class="card">
+                <h3 class="card-title mb-2">Вопросы на повторение:</h3>
+                <div id="reviewQueueList"></div>
+            </div>
+        </div>
+
+        <!-- Review Area -->
+        <div id="reviewArea" class="hidden">
+            <!-- Прогресс -->
+            <div class="mb-4">
+                <div class="flex-between mb-2">
+                    <h2>Повторение</h2>
+                    <button id="backToDashboardBtn" class="btn btn-secondary">← Назад</button>
+                </div>
+                <div class="progress-bar">
+                    <div id="reviewProgress" class="progress-fill" style="width: 0%"></div>
+                </div>
+                <p class="text-secondary" style="font-size: 0.875rem; margin-top: 0.5rem;">
+                    <span id="reviewCurrent">0</span> / <span id="reviewTotal">0</span>
+                </p>
+            </div>
+
+            <!-- Вопрос -->
+            <div id="questionContainer" class="question-container">
+                <div class="question-header">
+                    <div>
+                        <h3 id="questionTitle" style="margin-bottom: 0.5rem;"></h3>
+                        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                            <span id="levelBadge" class="badge badge-level"></span>
+                            <span id="difficultyBadge" class="difficulty-badge"></span>
+                            <span id="topicBadge" class="badge badge-tag"></span>
+                        </div>
+                    </div>
+                    <div id="questionTimer" style="font-size: 1.5rem; font-weight: 600; color: var(--accent-color);">00:00</div>
+                </div>
+                
+                <div id="questionText" style="line-height: 1.8; margin-top: 1.5rem;"></div>
+            </div>
+
+            <!-- Кнопки -->
+            <div class="flex gap-2 mb-4">
+                <button id="showAnswerBtnReview" class="btn btn-primary">Показать ответ</button>
+                <button id="skipBtn" class="btn btn-outline">Пропустить</button>
+            </div>
+
+            <!-- Ответ -->
+            <div id="answerSection" class="answer-section hidden">
+                <div class="answer-header">✅ Правильный ответ:</div>
+                <div id="answerText"></div>
+                
+                <!-- Confidence Rating -->
+                <div class="mt-4" style="padding-top: 1.5rem; border-top: 1px solid var(--border-color);">
+                    <label style="display: block; margin-bottom: 0.75rem; font-weight: 600;">
+                        Как хорошо помнишь материал?
+                    </label>
+                    <div class="confidence-grid">
+                        <button class="confidence-card" data-level="1">
+                            <div class="confidence-emoji">😰</div>
+                            <div class="confidence-label">Не помню</div>
+                            <div class="confidence-interval">1 день</div>
+                        </button>
+                        <button class="confidence-card" data-level="2">
+                            <div class="confidence-emoji">😕</div>
+                            <div class="confidence-label">Плохо</div>
+                            <div class="confidence-interval">2 дня</div>
+                        </button>
+                        <button class="confidence-card" data-level="3">
+                            <div class="confidence-emoji">🙂</div>
+                            <div class="confidence-label">Нормально</div>
+                            <div class="confidence-interval">3 дня</div>
+                        </button>
+                        <button class="confidence-card" data-level="4">
+                            <div class="confidence-emoji">😊</div>
+                            <div class="confidence-label">Хорошо</div>
+                            <div class="confidence-interval">7 дней</div>
+                        </button>
+                        <button class="confidence-card" data-level="5">
+                            <div class="confidence-emoji">🤩</div>
+                            <div class="confidence-label">Отлично</div>
+                            <div class="confidence-interval">14 дней</div>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Заметки -->
+            <div class="card mt-4" id="notesCard">
+                <h3 style="margin-bottom: 0.75rem;">📝 Твои заметки</h3>
+                <div id="userNotesDisplay" class="text-secondary"></div>
+            </div>
+        </div>
+
+        <!-- Completion -->
+        <div id="completionSection" class="hidden">
+            <div style="text-align: center;">
+                <h1 style="font-size: 2.5rem; margin-bottom: 1rem;">🎉 Все повторения завершены!</h1>
+                <p class="text-secondary" style="font-size: 1.125rem; margin-bottom: 2rem;">
+                    Ты повторил <span id="completedCount" style="font-weight: 600; color: var(--accent-color);">0</span> вопросов
+                </p>
+                
+                <div class="flex gap-2" style="justify-content: center;">
+                    <a href="/review" class="btn btn-primary">← Назад к дашборду</a>
+                    <a href="/practice" class="btn btn-secondary">Практика</a>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script src="/static/app.js"></script>
+    <script>
+        let reviewQueue = [];
+        let currentIndex = 0;
+        let currentQuestion = null;
+        let questionStartTime = null;
+        let questionTimerInterval = null;
+        let reviewedToday = 0;
+
+        // Элементы DOM
+        const reviewDashboard = document.getElementById('reviewDashboard');
+        const reviewArea = document.getElementById('reviewArea');
+        const completionSection = document.getElementById('completionSection');
+        const answerSection = document.getElementById('answerSection');
+
+        // Инициализация
+        async function init() {
+            await loadReviewStats();
+            await loadReviewQueue();
+        }
+
+        // Загрузка статистики
+        async function loadReviewStats() {
+            try {
+                const response = await fetch('/api/review/stats');
+                const stats = await response.json();
+                
+                document.getElementById('dueTodayCount').textContent = stats.due_today;
+                document.getElementById('dueTomorrowCount').textContent = stats.due_tomorrow;
+                document.getElementById('totalInReviewCount').textContent = stats.total_in_review;
+                document.getElementById('reviewedTodayCount').textContent = reviewedToday;
+            } catch (error) {
+                showNotification('Ошибка загрузки статистики', 'error');
+            }
+        }
+
+        // Загрузка очереди
+        async function loadReviewQueue() {
+            try {
+                const response = await fetch('/api/review/queue?limit=50');
+                reviewQueue = await response.json();
+                
+                const queueList = document.getElementById('reviewQueueList');
+                
+                if (reviewQueue.length === 0) {
+                    queueList.innerHTML = '<p class="text-secondary text-center" style="padding: 2rem;">Нет вопросов на повторение! 🎉</p>';
+                    document.getElementById('startReviewBtn').disabled = true;
+                    return;
+                }
+                
+                queueList.innerHTML = reviewQueue.map((q, idx) => `
+                    <div style="padding: 1rem; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <div style="font-weight: 500;">${q.title}</div>
+                            <div style="font-size: 0.875rem; color: var(--text-secondary); margin-top: 0.25rem;">
+                                ${q.topic_name} • Level ${q.level} • ${q.difficulty}
+                            </div>
+                        </div>
+                        <span class="badge badge-level badge-level-${q.level}">L${q.level}</span>
+                    </div>
+                `).join('');
+                
+            } catch (error) {
+                showNotification('Ошибка загрузки очереди', 'error');
+            }
+        }
+
+        // Начать повторение
+        document.getElementById('startReviewBtn').addEventListener('click', () => {
+            if (reviewQueue.length === 0) return;
+            
+            reviewDashboard.classList.add('hidden');
+            reviewArea.classList.remove('hidden');
+            
+            currentIndex = 0;
+            loadCurrentQuestion();
+        });
+
+        // Назад к дашборду
+        document.getElementById('backToDashboardBtn').addEventListener('click', () => {
+            if (confirm('Прервать повторение?')) {
+                window.location.reload();
+            }
+        });
+
+        // Загрузка текущего вопроса
+        async function loadCurrentQuestion() {
+            if (currentIndex >= reviewQueue.length) {
+                showCompletion();
+                return;
+            }
+            
+            const questionData = reviewQueue[currentIndex];
+            
+            try {
+                // Загружаем полный вопрос
+                const response = await fetch(`/api/question/${questionData.id}/answer`);
+                currentQuestion = await response.json();
+                
+                // Обновляем UI
+                document.getElementById('questionTitle').textContent = currentQuestion.title;
+                document.getElementById('levelBadge').textContent = `Level ${currentQuestion.level || 1}`;
+                document.getElementById('levelBadge').className = `badge badge-level badge-level-${currentQuestion.level || 1}`;
+                document.getElementById('difficultyBadge').textContent = currentQuestion.difficulty;
+                document.getElementById('difficultyBadge').className = `difficulty-badge ${Utils.getDifficultyClass(currentQuestion.difficulty)}`;
+                document.getElementById('topicBadge').textContent = currentQuestion.topic_name;
+                
+                document.getElementById('questionText').innerHTML = parseMarkdownToHtml(currentQuestion.question_text);
+                document.getElementById('questionText').querySelectorAll('pre code').forEach((block) => {
+                    hljs.highlightElement(block);
+                });
+                
+                // Прогресс
+                const progress = ((currentIndex + 1) / reviewQueue.length) * 100;
+                document.getElementById('reviewProgress').style.width = progress + '%';
+                document.getElementById('reviewCurrent').textContent = currentIndex + 1;
+                document.getElementById('reviewTotal').textContent = reviewQueue.length;
+                
+                // Заметки
+                await loadNotes(currentQuestion.id);
+                
+                answerSection.classList.add('hidden');
+                startQuestionTimer();
+                
+            } catch (error) {
+                showNotification('Ошибка загрузки вопроса', 'error');
+            }
+        }
+
+        // Таймер
+        function startQuestionTimer() {
+            questionStartTime = Date.now();
+            questionTimerInterval = setInterval(() => {
+                const elapsed = Math.floor((Date.now() - questionStartTime) / 1000);
+                document.getElementById('questionTimer').textContent = formatTime(elapsed);
+            }, 1000);
+        }
+
+        function stopQuestionTimer() {
+            if (questionTimerInterval) {
+                clearInterval(questionTimerInterval);
+            }
+            return questionStartTime ? Math.floor((Date.now() - questionStartTime) / 1000) : 0;
+        }
+
+        function formatTime(seconds) {
+            const mins = Math.floor(seconds / 60);
+            const secs = seconds % 60;
+            return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+        }
+
+        // Загрузка заметок
+        async function loadNotes(questionId) {
+            try {
+                const response = await fetch(`/api/notes/${questionId}`);
+                const note = await response.json();
+                
+                const notesDisplay = document.getElementById('userNotesDisplay');
+                if (note.note_text) {
+                    notesDisplay.textContent = note.note_text;
+                    document.getElementById('notesCard').classList.remove('hidden');
+                } else {
+                    document.getElementById('notesCard').classList.add('hidden');
+                }
+            } catch (error) {
+                console.error('Error loading notes:', error);
+            }
+        }
+
+        // Показать ответ
+        document.getElementById('showAnswerBtnReview').addEventListener('click', () => {
+            stopQuestionTimer();
+            
+            document.getElementById('answerText').innerHTML = parseMarkdownToHtml(currentQuestion.answer_text);
+            document.getElementById('answerText').querySelectorAll('pre code').forEach((block) => {
+                hljs.highlightElement(block);
+            });
+            
+            answerSection.classList.remove('hidden');
+            setupConfidenceButtons();
+        });
+
+        // Confidence buttons
+        function setupConfidenceButtons() {
+            const buttons = document.querySelectorAll('.confidence-card');
+            buttons.forEach(btn => {
+                btn.onclick = async () => {
+                    const level = parseInt(btn.dataset.level);
+                    const timeSpent = stopQuestionTimer();
+                    
+                    // Визуальный feedback
+                    btn.style.background = 'var(--accent-color)';
+                    btn.style.color = 'white';
+                    btn.style.borderColor = 'var(--accent-color)';
+                    
+                    try {
+                        await fetch('/api/review/update', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({
+                                question_id: currentQuestion.id,
+                                confidence_level: level,
+                                time_spent: timeSpent
+                            })
+                        });
+                        
+                        reviewedToday++;
+                        
+                        // Переходим к следующему
+                        setTimeout(() => {
+                            currentIndex++;
+                            loadCurrentQuestion();
+                        }, 500);
+                        
+                    } catch (error) {
+                        showNotification('Ошибка сохранения', 'error');
+                    }
+                };
+            });
+        }
+
+        // Пропустить
+        document.getElementById('skipBtn').addEventListener('click', () => {
+            if (confirm('Пропустить этот вопрос?')) {
+                stopQuestionTimer();
+                currentIndex++;
+                loadCurrentQuestion();
+            }
+        });
+
+        // Завершение
+        function showCompletion() {
+            reviewArea.classList.add('hidden');
+            completionSection.classList.remove('hidden');
+            document.getElementById('completedCount').textContent = reviewedToday;
+        }
+
+        // Парсинг markdown
+        function parseMarkdownToHtml(text) {
+            let html = text.replace(/```(\w+)?\n([\s\S]*?)```/g, (match, lang, code) => {
+                return `<pre><code class="language-${lang || 'text'}">${escapeHtml(code.trim())}</code></pre>`;
+            });
+            
+            html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+            html = html.replace(/\n\n/g, '</p><p>');
+            html = html.replace(/\n/g, '<br>');
+            html = '<p>' + html + '</p>';
+            
+            return html;
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Запуск
+        init();
+    </script>
+
+    <style>
+        .confidence-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 1rem;
+        }
+
+        .confidence-card {
+            padding: 1.5rem 1rem;
+            background: var(--bg-secondary);
+            border: 2px solid var(--border-color);
+            border-radius: 0.75rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-align: center;
+        }
+
+        .confidence-card:hover {
+            background: var(--bg-hover);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+
+        .confidence-emoji {
+            font-size: 2rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .confidence-label {
+            font-weight: 600;
+            margin-bottom: 0.25rem;
+        }
+
+        .confidence-interval {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+        }
+
+        .badge {
+            padding: 0.25rem 0.75rem;
+            border-radius: 0.375rem;
+            font-size: 0.875rem;
+            font-weight: 500;
+            display: inline-block;
+        }
+
+        .badge-level {
+            background: var(--accent-color);
+            color: white;
+        }
+
+        .badge-level-1 { background: #10b981; }
+        .badge-level-2 { background: #3b82f6; }
+        .badge-level-3 { background: #f59e0b; }
+        .badge-level-4 { background: #ef4444; }
+
+        .badge-tag {
+            background: var(--bg-secondary);
+            color: var(--text-secondary);
+            border: 1px solid var(--border-color);
+        }
+    </style>
+</body>
+</html>
+

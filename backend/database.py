@@ -1,7 +1,7 @@
-from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, ForeignKey, Float
+from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, ForeignKey, Float, Boolean, JSON
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
-from datetime import datetime
+from datetime import datetime, timedelta
 import os
 
 # Путь к базе данных
@@ -39,9 +39,20 @@ class Question(Base):
     answer_text = Column(Text, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     
+    # Новые поля для многоуровневой системы
+    level = Column(Integer, default=1)  # 1-4 (L1: Surface, L2: Deeper, L3: Expert, L4: Master)
+    parent_concept_id = Column(Integer, ForeignKey("questions.id"), nullable=True)  # Связь с родительским концептом
+    tags = Column(JSON, nullable=True)  # ["security", "gas-optimization", ...]
+    estimated_time = Column(Integer, nullable=True)  # Время в минутах
+    
     # Связи
     topic = relationship("Topic", back_populates="questions")
     user_answers = relationship("UserAnswer", back_populates="question", cascade="all, delete-orphan")
+    resources = relationship("Resource", back_populates="question", cascade="all, delete-orphan")
+    user_notes = relationship("UserNote", back_populates="question", cascade="all, delete-orphan")
+    
+    # Связи для многоуровневых вопросов
+    child_questions = relationship("Question", backref="parent_concept", remote_side=[id])
 
 
 class UserAnswer(Base):
@@ -53,6 +64,12 @@ class UserAnswer(Base):
     session_id = Column(Integer, ForeignKey("sessions.id"), nullable=True)
     user_answer = Column(Text, nullable=True)
     answered_at = Column(DateTime, default=datetime.utcnow)
+    
+    time_spent = Column(Integer, nullable=True)  # Время в секундах
+    showed_answer = Column(Boolean, default=False)  # Показывал ли ответ сразу
+    confidence_level = Column(Integer, nullable=True)  # 1-5 (насколько уверен)
+    next_review_date = Column(DateTime, nullable=True)  # Следующая дата повторения
+    review_count = Column(Integer, default=0)  # Количество повторений
     
     # Связи
     question = relationship("Question", back_populates="user_answers")
@@ -70,6 +87,48 @@ class Session(Base):
     duration_minutes = Column(Float, nullable=True)
     summary = Column(Text, nullable=True)
     answers = relationship("UserAnswer", back_populates="session", cascade="all, delete-orphan")
+
+
+class ConceptLink(Base):
+    """Связи между концептами/вопросами"""
+    __tablename__ = "concept_links"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    from_question_id = Column(Integer, ForeignKey("questions.id"), nullable=False)
+    to_question_id = Column(Integer, ForeignKey("questions.id"), nullable=False)
+    relationship_type = Column(String(50), nullable=False)  # prerequisite, related, deeper, example, sibling
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class Resource(Base):
+    """Ресурсы для углубленного изучения"""
+    __tablename__ = "resources"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    question_id = Column(Integer, ForeignKey("questions.id"), nullable=False)
+    type = Column(String(20), nullable=False)  # article, video, code, tool, docs
+    title = Column(String(200), nullable=False)
+    url = Column(String(500), nullable=False)
+    description = Column(Text, nullable=True)
+    quality_score = Column(Float, default=0.0)  # Community rating 0-5
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    # Связь
+    question = relationship("Question", back_populates="resources")
+
+
+class UserNote(Base):
+    """Личные заметки пользователя к вопросам"""
+    __tablename__ = "user_notes"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    question_id = Column(Integer, ForeignKey("questions.id"), nullable=False)
+    note_text = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Связь
+    question = relationship("Question", back_populates="user_notes")
 
 
 def init_db():

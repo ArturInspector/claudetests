@@ -27,7 +27,7 @@ const API = {
         return response.json();
     },
     
-    async submitAnswer(questionId, userAnswer, sessionId = null) {
+    async submitAnswer(questionId, userAnswer, sessionId = null, timeSpent = null, showedAnswer = false, confidenceLevel = null) {
         const response = await fetch('/api/answer', {
             method: 'POST',
             headers: {
@@ -36,7 +36,10 @@ const API = {
             body: JSON.stringify({
                 question_id: questionId,
                 user_answer: userAnswer,
-                session_id: sessionId
+                session_id: sessionId,
+                time_spent: timeSpent,
+                showed_answer: showedAnswer,
+                confidence_level: confidenceLevel
             })
         });
         return response.json();
