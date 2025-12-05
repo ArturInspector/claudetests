@@ -90,6 +90,49 @@ const API = {
         }
         
         return response.json();
+    },
+    
+    // Tasks API
+    async getTasks(filters = {}) {
+        const params = new URLSearchParams();
+        if (filters.block) params.append('block', filters.block);
+        if (filters.language) params.append('language', filters.language);
+        if (filters.difficulty) params.append('difficulty', filters.difficulty);
+        if (filters.task_type) params.append('task_type', filters.task_type);
+        
+        const response = await fetch(`/api/tasks?${params.toString()}`);
+        return response.json();
+    },
+    
+    async getTask(taskId) {
+        const response = await fetch(`/api/tasks/${taskId}`);
+        return response.json();
+    },
+    
+    async submitTask(taskId, data) {
+        const response = await fetch(`/api/tasks/${taskId}/submit`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+        return response.json();
+    },
+    
+    async importTasks(file) {
+        const formData = new FormData();
+        formData.append('file', file);
+        
+        const response = await fetch('/api/tasks/import', {
+            method: 'POST',
+            body: formData
+        });
+        
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Ошибка импорта');
+        }
+        
+        return response.json();
     }
 };
 
