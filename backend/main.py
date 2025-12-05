@@ -4,7 +4,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Dict
 import os
 import sys
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -12,6 +12,8 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from database import get_db, init_db, SessionLocal
 import crud
 from parser import parse_markdown_content
+from task_parser import parse_task_markdown
+from compiler import get_compiler
 
 init_db()
 
@@ -50,6 +52,14 @@ class ReviewUpdate(BaseModel):
     question_id: int
     confidence_level: int  # 1-5
     time_spent: Optional[int] = None
+
+class TaskSubmissionRequest(BaseModel):
+    task_id: int
+    user_code: Optional[str] = None  # Для Write задач
+    review_answers: Optional[Dict] = None  # Для Review задач: {"question1": "answer1", ...}
+    found_issues: Optional[List[str]] = None  # Для Review задач: список найденных проблем
+    improved_code: Optional[str] = None  # Для Review задач: улучшенный код
+    time_spent: Optional[int] = None  # В секундах
 
 class TopicResponse(BaseModel):
     id: int
@@ -100,8 +110,13 @@ async def index(request: Request, db: Session = Depends(get_db)):
 
 @app.get("/practice", response_class=HTMLResponse)
 async def practice_page(request: Request):
-    """Страница практики"""
+    """Страница практики (вопросы)"""
     return templates.TemplateResponse("practice.html", {"request": request})
+
+@app.get("/tasks", response_class=HTMLResponse)
+async def tasks_page(request: Request):
+    """Страница задач"""
+    return templates.TemplateResponse("tasks.html", {"request": request})
 
 
 @app.get("/stats", response_class=HTMLResponse)
@@ -560,6 +575,306 @@ async def get_children(question_id: int, db: Session = Depends(get_db)):
         })
     
     return result
+
+
+# ==================== TASKS ====================
+
+@app.post("/api/tasks/import")
+async def import_tasks(file: UploadFile = File(...), db: Session = Depends(get_db)):
+    """Импорт задач из .md файла"""
+    if not file.filename.endswith('.md'):
+        raise HTTPException(status_code=400, detail="Только .md файлы поддерживаются")
+    
+    try:
+        content = await file.read()
+        content_str = content.decode('utf-8')
+        
+        # Парсим содержимое
+        parsed_data = parse_task_markdown(content_str)
+        
+        # Получаем или создаем тему
+        topic = crud.get_or_create_topic(db, parsed_data['topic'])
+        
+        # Добавляем задачи
+        tasks_added = 0
+        for task_data in parsed_data['tasks']:
+            task = crud.create_task(
+                db=db,
+                topic_id=topic.id,
+                title=task_data['title'],
+                description=task_data['description'],
+                task_type=task_data.get('task_type', 'write'),
+                block=task_data.get('block'),
+                starter_code=task_data.get('starter_code'),
+                test_code=task_data.get('test_code'),
+                solution_code=task_data.get('solution_code'),
+                ai_code=task_data.get('ai_code'),
+                review_questions=task_data.get('review_questions'),
+                expected_issues=task_data.get('expected_issues'),
+                difficulty=task_data['difficulty'],
+                language=task_data['language'],
+                estimated_time=task_data.get('estimated_time'),
+                hints=task_data.get('hints'),
+                requirements=task_data.get('requirements'),
+                tags=task_data.get('tags'),
+                order=task_data.get('order', 0)
+            )
+            tasks_added += 1
+        
+        return {
+            "success": True,
+            "topic": parsed_data['topic'],
+            "tasks_added": tasks_added
+        }
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ошибка импорта: {str(e)}")
+
+
+@app.get("/api/tasks")
+async def get_tasks(
+    topic_id: Optional[int] = None,
+    difficulty: Optional[str] = None,
+    language: Optional[str] = None,
+    task_type: Optional[str] = None,
+    block: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    """Получить список задач с фильтрами"""
+    if topic_id:
+        tasks = crud.get_tasks_by_topic(db, topic_id, difficulty, language)
+    else:
+        # Если topic_id не указан, возвращаем все задачи
+        from database import Task
+        query = db.query(Task)
+        if difficulty:
+            query = query.filter(Task.difficulty == difficulty)
+        if language:
+            query = query.filter(Task.language == language)
+        if task_type:
+            query = query.filter(Task.task_type == task_type)
+        if block:
+            query = query.filter(Task.block == block)
+        tasks = query.order_by(Task.order, Task.id).all()
+    
+    result = []
+    for task in tasks:
+        result.append({
+            "id": task.id,
+            "title": task.title,
+            "description": task.description,
+            "task_type": task.task_type,
+            "block": task.block,
+            "difficulty": task.difficulty,
+            "language": task.language,
+            "estimated_time": task.estimated_time,
+            "order": task.order,
+            "tags": task.tags,
+            "topic_id": task.topic_id,
+            "topic_name": task.topic.name if task.topic else None
+        })
+    
+    return result
+
+
+@app.get("/api/tasks/{task_id}")
+async def get_task(task_id: int, db: Session = Depends(get_db)):
+    """Получить задачу по ID (без решения)"""
+    task = crud.get_task_by_id(db, task_id)
+    
+    if not task:
+        raise HTTPException(status_code=404, detail="Задача не найдена")
+    
+    # Получаем статистику попыток
+    submissions = crud.get_task_submissions(db, task_id, limit=1)
+    attempts = submissions[0].attempts if submissions else 0
+    
+    result = {
+        "id": task.id,
+        "title": task.title,
+        "description": task.description,
+        "task_type": task.task_type,
+        "block": task.block,
+        "difficulty": task.difficulty,
+        "language": task.language,
+        "estimated_time": task.estimated_time,
+        "requirements": task.requirements,
+        "tags": task.tags,
+        "order": task.order,
+        "topic_name": task.topic.name if task.topic else None,
+        "previous_attempts": attempts
+    }
+    
+    # Возвращаем поля в зависимости от типа задачи
+    if task.task_type == "review":
+        result.update({
+            "ai_code": task.ai_code,
+            "review_questions": task.review_questions,
+            "expected_issues": None  # Не показываем ожидаемые проблемы
+        })
+    else:
+        result.update({
+            "starter_code": task.starter_code,
+            "test_code": task.test_code,
+            "hints": task.hints
+        })
+    
+    return result
+
+
+@app.post("/api/tasks/{task_id}/submit")
+async def submit_task_solution(
+    task_id: int,
+    submission_data: TaskSubmissionRequest,
+    db: Session = Depends(get_db)
+):
+    """Отправить решение задачи и проверить через компилятор"""
+    task = crud.get_task_by_id(db, task_id)
+    
+    if not task:
+        raise HTTPException(status_code=404, detail="Задача не найдена")
+    
+    # Обработка в зависимости от типа задачи
+    if task.task_type == "review":
+        # Review задачи - проверяем ответы на вопросы
+        return await _submit_review_task(task, submission_data, db)
+    else:
+        # Write задачи - компилируем код
+        return await _submit_write_task(task, submission_data, db)
+
+
+async def _submit_write_task(task, submission_data: TaskSubmissionRequest, db: Session):
+    """Обработка Write задач"""
+    if not submission_data.user_code:
+        raise HTTPException(status_code=400, detail="user_code обязателен для Write задач")
+    
+    # Получаем компилятор
+    compiler = get_compiler()
+    
+    # Компилируем код в зависимости от языка
+    if task.language == "go":
+        result = compiler.compile_go(
+            submission_data.user_code,
+            task.test_code
+        )
+    elif task.language == "solidity":
+        result = compiler.compile_solidity(submission_data.user_code)
+    else:
+        raise HTTPException(status_code=400, detail=f"Язык {task.language} не поддерживается")
+    
+    # Определяем прошло ли решение
+    passed = False
+    if task.language == "go":
+        passed = result.get("success", False) and (
+            result.get("test_results", {}).get("passed", False) if task.test_code else result.get("compiled", False)
+        )
+    elif task.language == "solidity":
+        passed = result.get("compiled", False)
+    
+    # Сохраняем отправку
+    submission = crud.create_task_submission(
+        db=db,
+        task_id=task.id,
+        user_code=submission_data.user_code,
+        compilation_result=result,
+        test_results=result.get("test_results"),
+        passed=passed,
+        time_spent=submission_data.time_spent
+    )
+    
+    # Формируем ответ с подсказками если не прошло
+    response = {
+        "success": passed,
+        "submission_id": submission.id,
+        "compilation": {
+            "compiled": result.get("compiled", False),
+            "errors": result.get("errors", []),
+            "output": result.get("output", "")
+        },
+        "test_results": result.get("test_results"),
+        "attempts": submission.attempts
+    }
+    
+    # Добавляем подсказки если не прошло и есть попытки
+    if not passed and submission.attempts >= 2 and task.hints:
+        response["hints"] = task.hints[:submission.attempts - 1]
+    
+    return response
+
+
+async def _submit_review_task(task, submission_data: TaskSubmissionRequest, db: Session):
+    """Обработка Review задач"""
+    if not submission_data.review_answers and not submission_data.found_issues:
+        raise HTTPException(status_code=400, detail="review_answers или found_issues обязательны для Review задач")
+    
+    # Простая проверка: сравниваем найденные проблемы с ожидаемыми
+    # В реальности можно использовать ИИ для проверки качества ответов
+    found_issues = submission_data.found_issues or []
+    expected_issues = task.expected_issues or []
+    
+    # Подсчитываем совпадения
+    matched_issues = set(found_issues) & set(expected_issues)
+    score = len(matched_issues) / len(expected_issues) if expected_issues else 0
+    passed = score >= 0.6  # Прошли если нашли 60%+ проблем
+    
+    # Сохраняем отправку
+    submission = crud.create_task_submission(
+        db=db,
+        task_id=task.id,
+        review_answers=submission_data.review_answers,
+        found_issues=submission_data.found_issues,
+        improved_code=submission_data.improved_code,
+        passed=passed,
+        time_spent=submission_data.time_spent
+    )
+    
+    return {
+        "success": passed,
+        "submission_id": submission.id,
+        "score": round(score * 100, 1),
+        "matched_issues": list(matched_issues),
+        "expected_issues": expected_issues,
+        "found_issues": found_issues,
+        "attempts": submission.attempts,
+        "feedback": _generate_review_feedback(matched_issues, expected_issues, found_issues)
+    }
+
+
+def _generate_review_feedback(matched: set, expected: list, found: list) -> str:
+    """Генерирует фидбек для Review задачи"""
+    if len(matched) == len(expected):
+        return "Отлично! Ты нашел все проблемы."
+    elif len(matched) >= len(expected) * 0.6:
+        missing = set(expected) - matched
+        return f"Хорошо! Найдено {len(matched)} из {len(expected)} проблем. Пропущено: {', '.join(missing)}"
+    else:
+        missing = set(expected) - matched
+        return f"Нужно больше практики. Найдено {len(matched)} из {len(expected)} проблем. Пропущено: {', '.join(missing)}"
+
+
+@app.get("/api/tasks/{task_id}/submissions")
+async def get_task_submissions(task_id: int, limit: int = 10, db: Session = Depends(get_db)):
+    """Получить историю отправок решения задачи"""
+    submissions = crud.get_task_submissions(db, task_id, limit)
+    
+    result = []
+    for sub in submissions:
+        result.append({
+            "id": sub.id,
+            "passed": sub.passed,
+            "attempts": sub.attempts,
+            "time_spent": sub.time_spent,
+            "submitted_at": sub.submitted_at.isoformat(),
+            "compilation_errors": sub.compilation_result.get("errors", []) if sub.compilation_result else []
+        })
+    
+    return result
+
+
+@app.get("/api/tasks/stats")
+async def get_task_statistics(topic_id: Optional[int] = None, db: Session = Depends(get_db)):
+    """Получить статистику по задачам"""
+    return crud.get_user_task_statistics(db, topic_id)
 
 
 if __name__ == "__main__":

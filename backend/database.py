@@ -131,6 +131,69 @@ class UserNote(Base):
     question = relationship("Question", back_populates="user_notes")
 
 
+class Task(Base):
+    """Практические задачи с кодом для компиляции"""
+    __tablename__ = "tasks"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    topic_id = Column(Integer, ForeignKey("topics.id"), nullable=False)
+    title = Column(String(200), nullable=False)
+    description = Column(Text, nullable=False)
+    
+    # Тип задачи: "write" (написать код) или "review" (code review)
+    task_type = Column(String(20), nullable=False, default="write")  # write, review
+    
+    # Для Write задач:
+    starter_code = Column(Text, nullable=True)  # Начальный код (скелет)
+    test_code = Column(Text, nullable=True)  # Unit тесты для проверки
+    solution_code = Column(Text, nullable=True)  # Правильное решение (скрыто от пользователя)
+    
+    # Для Review задач:
+    ai_code = Column(Text, nullable=True)  # Код от ИИ для ревью
+    review_questions = Column(JSON, nullable=True)  # Вопросы для ревью ["q1", "q2"]
+    expected_issues = Column(JSON, nullable=True)  # Ожидаемые проблемы (для проверки)
+    
+    difficulty = Column(String(20), nullable=False)  # Easy, Medium, Hard
+    language = Column(String(20), nullable=False)  # go, solidity, python, etc.
+    estimated_time = Column(Integer, nullable=True)  # Время в минутах
+    hints = Column(JSON, nullable=True)  # Подсказки ["hint1", "hint2"]
+    requirements = Column(JSON, nullable=True)  # Требования ["req1", "req2"]
+    tags = Column(JSON, nullable=True)  # Теги для фильтрации
+    order = Column(Integer, default=0)  # Порядок в последовательности обучения
+    block = Column(String(20), nullable=True)  # Блок: "write" или "review"
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    # Связи
+    topic = relationship("Topic")
+    submissions = relationship("TaskSubmission", back_populates="task", cascade="all, delete-orphan")
+
+
+class TaskSubmission(Base):
+    """Отправленные решения задач"""
+    __tablename__ = "task_submissions"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    task_id = Column(Integer, ForeignKey("tasks.id"), nullable=False)
+    
+    # Для Write задач:
+    user_code = Column(Text, nullable=True)  # Код пользователя
+    compilation_result = Column(JSON, nullable=True)  # Результат компиляции
+    test_results = Column(JSON, nullable=True)  # Результаты тестов
+    
+    # Для Review задач:
+    review_answers = Column(JSON, nullable=True)  # Ответы на вопросы ревью
+    found_issues = Column(JSON, nullable=True)  # Найденные проблемы
+    improved_code = Column(Text, nullable=True)  # Улучшенный код
+    
+    passed = Column(Boolean, default=False)
+    attempts = Column(Integer, default=1)  # Количество попыток
+    time_spent = Column(Integer, nullable=True)  # Время в секундах
+    submitted_at = Column(DateTime, default=datetime.utcnow)
+    
+    # Связь
+    task = relationship("Task", back_populates="submissions")
+
+
 def init_db():
     """Инициализация базы данных - создание всех таблиц"""
     Base.metadata.create_all(bind=engine)

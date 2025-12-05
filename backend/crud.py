@@ -4,7 +4,7 @@ from typing import List, Optional, Dict
 from datetime import datetime, timedelta
 import random
 
-from database import Topic, Question, UserAnswer, Session as DBSession, Resource, UserNote, ConceptLink
+from database import Topic, Question, UserAnswer, Session as DBSession, Resource, UserNote, ConceptLink, Task, TaskSubmission
 
 
 # ==================== TOPICS ====================
@@ -489,4 +489,163 @@ def get_concept_children(db: Session, parent_concept_id: int) -> List[Question]:
     return db.query(Question).filter(
         Question.parent_concept_id == parent_concept_id
     ).order_by(Question.level).all()
+
+
+# ==================== TASKS ====================
+
+def create_task(
+    db: Session,
+    topic_id: int,
+    title: str,
+    description: str,
+    difficulty: str,
+    language: str,
+    task_type: str = "write",
+    block: str = None,
+    starter_code: str = None,
+    test_code: str = None,
+    solution_code: str = None,
+    ai_code: str = None,
+    review_questions: List[str] = None,
+    expected_issues: List[str] = None,
+    estimated_time: int = None,
+    hints: List[str] = None,
+    requirements: List[str] = None,
+    tags: List[str] = None,
+    order: int = 0
+) -> Task:
+    """Создать новую задачу"""
+    if block is None:
+        block = task_type  # По умолчанию блок = тип задачи
+    
+    task = Task(
+        topic_id=topic_id,
+        title=title,
+        description=description,
+        task_type=task_type,
+        block=block,
+        starter_code=starter_code,
+        test_code=test_code,
+        solution_code=solution_code,
+        ai_code=ai_code,
+        review_questions=review_questions,
+        expected_issues=expected_issues,
+        difficulty=difficulty,
+        language=language,
+        estimated_time=estimated_time,
+        hints=hints,
+        requirements=requirements,
+        tags=tags,
+        order=order
+    )
+    db.add(task)
+    db.commit()
+    db.refresh(task)
+    return task
+
+
+def get_task_by_id(db: Session, task_id: int) -> Optional[Task]:
+    """Получить задачу по ID"""
+    return db.query(Task).filter(Task.id == task_id).first()
+
+
+def get_tasks_by_topic(db: Session, topic_id: int, difficulty: str = None, language: str = None) -> List[Task]:
+    """Получить все задачи по теме с опциональными фильтрами"""
+    query = db.query(Task).filter(Task.topic_id == topic_id)
+    
+    if difficulty:
+        query = query.filter(Task.difficulty == difficulty)
+    
+    if language:
+        query = query.filter(Task.language == language)
+    
+    return query.order_by(Task.order, Task.id).all()
+
+
+def get_random_task(db: Session, topic_id: int, difficulty: str = None, language: str = None) -> Optional[Task]:
+    """Получить случайную задачу по теме"""
+    tasks = get_tasks_by_topic(db, topic_id, difficulty, language)
+    if not tasks:
+        return None
+    return random.choice(tasks)
+
+
+def create_task_submission(
+    db: Session,
+    task_id: int,
+    user_code: str = None,
+    compilation_result: Dict = None,
+    test_results: Dict = None,
+    review_answers: Dict = None,
+    found_issues: List[str] = None,
+    improved_code: str = None,
+    passed: bool = False,
+    time_spent: int = None
+) -> TaskSubmission:
+    """Создать отправку решения задачи"""
+    # Подсчитываем количество предыдущих попыток
+    previous_attempts = db.query(TaskSubmission).filter(
+        TaskSubmission.task_id == task_id
+    ).count()
+    
+    submission = TaskSubmission(
+        task_id=task_id,
+        user_code=user_code,
+        compilation_result=compilation_result,
+        test_results=test_results,
+        review_answers=review_answers,
+        found_issues=found_issues,
+        improved_code=improved_code,
+        passed=passed,
+        attempts=previous_attempts + 1,
+        time_spent=time_spent
+    )
+    db.add(submission)
+    db.commit()
+    db.refresh(submission)
+    return submission
+
+
+def get_task_submissions(db: Session, task_id: int, limit: int = 10) -> List[TaskSubmission]:
+    """Получить последние отправки решения задачи"""
+    return db.query(TaskSubmission).filter(
+        TaskSubmission.task_id == task_id
+    ).order_by(desc(TaskSubmission.submitted_at)).limit(limit).all()
+
+
+def get_user_task_statistics(db: Session, topic_id: int = None) -> Dict:
+    """Получить статистику по задачам пользователя"""
+    query = db.query(TaskSubmission)
+    
+    if topic_id:
+        query = query.join(Task).filter(Task.topic_id == topic_id)
+    
+    total_submissions = query.count()
+    passed_submissions = query.filter(TaskSubmission.passed == True).count()
+    
+    # Статистика по языкам
+    language_stats = {}
+    if topic_id:
+        tasks = get_tasks_by_topic(db, topic_id)
+        for task in tasks:
+            lang = task.language
+            if lang not in language_stats:
+                language_stats[lang] = {
+                    "total": 0,
+                    "passed": 0
+                }
+            
+            lang_submissions = db.query(TaskSubmission).filter(
+                TaskSubmission.task_id == task.id
+            ).all()
+            
+            language_stats[lang]["total"] += len(lang_submissions)
+            language_stats[lang]["passed"] += sum(1 for s in lang_submissions if s.passed)
+    
+    return {
+        "total_submissions": total_submissions,
+        "passed_submissions": passed_submissions,
+        "success_rate": round((passed_submissions / total_submissions * 100), 1) if total_submissions > 0 else 0,
+        "by_language": language_stats
+    }
 
