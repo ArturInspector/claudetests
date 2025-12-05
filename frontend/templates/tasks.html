@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Задачи - Claudetests</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+</head>
+<body>
+    <header class="header">
+        <div class="header-content">
+            <a href="/" class="logo">Claudetests</a>
+            <nav class="nav">
+                <a href="/">Главная</a>
+                <a href="/practice">Вопросы</a>
+                <a href="/tasks" class="active">Задачи</a>
+                <a href="/stats">Статистика</a>
+            </nav>
+        </div>
+    </header>
+
+    <main style="max-width: 1400px; margin: 0 auto; padding: 2rem;">
+        <!-- Выбор темы и блока -->
+        <div id="taskSelection" class="mb-4">
+            <h1 style="font-size: 2rem; margin-bottom: 1rem;">Выбери задачу</h1>
+            
+            <!-- Фильтры -->
+            <div class="card mb-4" style="padding: 1.5rem;">
+                <div style="display: flex; gap: 1rem; flex-wrap: wrap; align-items: center;">
+                    <div>
+                        <label style="display: block; font-weight: 600; margin-bottom: 0.5rem; font-size: 0.875rem;">Блок:</label>
+                        <select id="blockFilter" class="select-input">
+                            <option value="">Все блоки</option>
+                            <option value="write">Write (написать код)</option>
+                            <option value="review">Review (code review)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="display: block; font-weight: 600; margin-bottom: 0.5rem; font-size: 0.875rem;">Язык:</label>
+                        <select id="languageFilter" class="select-input">
+                            <option value="">Все языки</option>
+                            <option value="go">Go</option>
+                            <option value="solidity">Solidity</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="display: block; font-weight: 600; margin-bottom: 0.5rem; font-size: 0.875rem;">Сложность:</label>
+                        <select id="difficultyFilter" class="select-input">
+                            <option value="">Все</option>
+                            <option value="Easy">Easy</option>
+                            <option value="Medium">Medium</option>
+                            <option value="Hard">Hard</option>
+                        </select>
+                    </div>
+                    <div style="flex: 1;"></div>
+                    <button id="applyFiltersBtn" class="btn btn-primary">Применить</button>
+                </div>
+            </div>
+            
+            <!-- Список задач -->
+            <div id="tasksList" class="grid grid-2">
+                <!-- Задачи загружаются динамически -->
+            </div>
+        </div>
+
+        <!-- Область работы с задачей -->
+        <div id="taskArea" class="hidden">
+            <!-- Заголовок задачи -->
+            <div class="flex-between mb-4">
+                <div>
+                    <h2 id="taskTitle" style="margin-bottom: 0.25rem;"></h2>
+                    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.5rem;">
+                        <span id="taskTypeBadge" class="badge"></span>
+                        <span id="taskBlockBadge" class="badge"></span>
+                        <span id="taskDifficultyBadge" class="difficulty-badge"></span>
+                        <span id="taskLanguageBadge" class="badge badge-tag"></span>
+                    </div>
+                </div>
+                <button id="backToTasksBtn" class="btn btn-secondary">← Назад к задачам</button>
+            </div>
+
+            <!-- Описание задачи -->
+            <div class="card mb-4">
+                <h3 style="margin-bottom: 1rem;">Описание</h3>
+                <div id="taskDescription" style="line-height: 1.8;"></div>
+                <div id="taskRequirements" class="mt-4"></div>
+            </div>
+
+            <!-- Write задача -->
+            <div id="writeTaskSection" class="hidden">
+                <!-- Starter Code -->
+                <div class="card mb-4">
+                    <h3 style="margin-bottom: 1rem;">📝 Starter Code</h3>
+                    <div id="codeEditor" style="height: 400px; border: 1px solid var(--border-color); border-radius: 0.5rem;"></div>
+                </div>
+
+                <!-- Тесты (если есть) -->
+                <div id="testsSection" class="card mb-4 hidden">
+                    <h3 style="margin-bottom: 1rem;">🧪 Тесты</h3>
+                    <pre id="testsCode"><code></code></pre>
+                </div>
+
+                <!-- Кнопки действий -->
+                <div class="flex gap-2 mb-4">
+                    <button id="submitCodeBtn" class="btn btn-primary">Отправить решение</button>
+                    <button id="showHintsBtn" class="btn btn-secondary">Показать подсказки</button>
+                </div>
+
+                <!-- Результат компиляции -->
+                <div id="compilationResult" class="hidden"></div>
+            </div>
+
+            <!-- Review задача -->
+            <div id="reviewTaskSection" class="hidden">
+                <!-- Код от ИИ -->
+                <div class="card mb-4">
+                    <h3 style="margin-bottom: 1rem;">🤖 Код от ИИ</h3>
+                    <pre id="aiCode"><code></code></pre>
+                </div>
+
+                <!-- Вопросы для ревью -->
+                <div class="card mb-4">
+                    <h3 style="margin-bottom: 1rem;">❓ Вопросы для ревью</h3>
+                    <div id="reviewQuestions"></div>
+                </div>
+
+                <!-- Форма для ответов -->
+                <div class="card mb-4">
+                    <h3 style="margin-bottom: 1rem;">📝 Твой ревью</h3>
+                    
+                    <div class="mb-4">
+                        <label style="display: block; font-weight: 600; margin-bottom: 0.5rem;">
+                            Найденные проблемы (по одной на строку):
+                        </label>
+                        <textarea id="foundIssues" 
+                                  placeholder="1. Race condition в NextBackend()&#10;2. Нет обработки ошибок&#10;3. ..."
+                                  style="min-height: 150px; font-family: monospace;"></textarea>
+                    </div>
+
+                    <div class="mb-4">
+                        <label style="display: block; font-weight: 600; margin-bottom: 0.5rem;">
+                            Улучшенный код (опционально):
+                        </label>
+                        <div id="improvedCodeEditor" style="height: 300px; border: 1px solid var(--border-color); border-radius: 0.5rem;"></div>
+                    </div>
+
+                    <button id="submitReviewBtn" class="btn btn-primary">Отправить ревью</button>
+                </div>
+
+                <!-- Результат ревью -->
+                <div id="reviewResult" class="hidden"></div>
+            </div>
+        </div>
+
+        <!-- Загрузка -->
+        <div id="loadingSpinner" class="hidden">
+            <div class="spinner"></div>
+        </div>
+    </main>
+
+    <script src="/static/app.js"></script>
+    <script src="/static/tasks.js"></script>
+    
+    <style>
+        .badge-resource {
+            background: #ede9fe;
+            color: #6b21a8;
+        }
+        
+        #codeEditor, #improvedCodeEditor {
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+        }
+        
+        .grid.grid-2 {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: 1.5rem;
+        }
+        
+        @media (max-width: 768px) {
+            .grid.grid-2 {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</body>
+</html>
+
