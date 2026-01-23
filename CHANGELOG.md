@@ -1,4 +1,4 @@
-# Changelog - Deep Learning Platform
+# Changelog - Cloudtest
 
 ## v2.0.0 - Deep Learning Features (2025-01-13)
 

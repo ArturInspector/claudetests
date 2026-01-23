@@ -1,4 +1,4 @@
-# Архитектура: Interview Practice Platform
+# Архитектура: Cloudtest
 
 ## Обзор системы
 

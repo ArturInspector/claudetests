@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Практика - Deep Learning Platform</title>
+    <title>Практика - Cloudtest</title>
     <link rel="stylesheet" href="/static/style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
@@ -11,7 +11,7 @@
 <body>
     <header class="header">
         <div class="header-content">
-            <a href="/" class="logo">Deep Learning Platform</a>
+            <a href="/" class="logo">Cloudtest</a>
             <nav class="nav">
                 <a href="/">Главная</a>
                 <a href="/practice" class="active">Вопросы</a>
@@ -99,6 +99,16 @@
                             1 - не понял, 5 - полностью понял
                         </p>
                     </div>
+                </div>
+
+                <!-- Анализ ответа -->
+                <div id="answerAnalysisSection" class="card mt-4 hidden">
+                    <h3 style="margin-bottom: 0.75rem;">🔍 Анализ ответа</h3>
+                    <p class="text-secondary" style="font-size: 0.875rem; margin-bottom: 0.75rem;">
+                        Детальность, покрытие ключевых терминов и убедительность.
+                    </p>
+                    <div id="answerAnalysisSummary" style="margin-bottom: 0.75rem;"></div>
+                    <div id="answerAnalysisDetails" class="text-secondary" style="font-size: 0.875rem;"></div>
                 </div>
 
                 <!-- Ресурсы -->
@@ -193,6 +203,9 @@
         const userAnswer = document.getElementById('userAnswer');
         const answerSection = document.getElementById('answerSection');
         const answerText = document.getElementById('answerText');
+        const answerAnalysisSection = document.getElementById('answerAnalysisSection');
+        const answerAnalysisSummary = document.getElementById('answerAnalysisSummary');
+        const answerAnalysisDetails = document.getElementById('answerAnalysisDetails');
         const userNotes = document.getElementById('userNotes');
         
         const showAnswerBtn = document.getElementById('showAnswerBtn');
@@ -291,6 +304,9 @@
             try {
                 loadingSpinner.classList.remove('hidden');
                 answerSection.classList.add('hidden');
+                answerAnalysisSection.classList.add('hidden');
+                answerAnalysisSummary.textContent = '';
+                answerAnalysisDetails.textContent = '';
                 userAnswer.value = '';
                 userNotes.value = '';
 
@@ -514,6 +530,7 @@
                 });
                 
                 answerSection.classList.remove('hidden');
+                renderAnswerAnalysis(userAnswer.value, questionWithAnswer.answer_text);
                 
                 // Setup confidence rating
                 setupConfidenceRating(timeSpent);
@@ -552,6 +569,129 @@
                 };
             });
         }
+
+        function renderAnswerAnalysis(userText, referenceText) {
+            const analysis = analyzeAnswer(userText, referenceText);
+            if (!analysis) {
+                answerAnalysisSection.classList.add('hidden');
+                return;
+            }
+
+            answerAnalysisSummary.textContent = analysis.summary;
+            answerAnalysisDetails.innerHTML = `
+                <div>Детальность: <strong>${analysis.detailLabel}</strong> (${analysis.wordCount} слов).</div>
+                <div>Покрытие: <strong>${analysis.coverageLabel}</strong> (${analysis.coveragePercent}%).</div>
+                <div>Структура: <strong>${analysis.structureLabel}</strong>.</div>
+                <div>${analysis.missingText}</div>
+            `;
+            answerAnalysisSection.classList.remove('hidden');
+        }
+
+        function analyzeAnswer(userText, referenceText) {
+            if (!userText || !userText.trim()) {
+                return {
+                    summary: 'Нет ответа для анализа.',
+                    detailLabel: 'нет текста',
+                    coverageLabel: 'н/д',
+                    structureLabel: 'н/д',
+                    wordCount: 0,
+                    coveragePercent: 0,
+                    missingText: 'Напиши хотя бы пару предложений.'
+                };
+            }
+
+            const cleanedUser = normalizeText(userText);
+            const cleanedRef = normalizeText(referenceText || '');
+            const userTokens = tokenize(cleanedUser);
+            const refTokens = tokenize(cleanedRef);
+
+            const keywords = extractKeywords(refTokens, 10);
+            const userSet = new Set(userTokens);
+            const matched = keywords.filter((kw) => userSet.has(kw));
+            const missing = keywords.filter((kw) => !userSet.has(kw));
+            const coverageRatio = keywords.length ? matched.length / keywords.length : 0;
+            const detailRatio = userTokens.length / Math.max(refTokens.length, 1);
+
+            const detailLabel = getDetailLabel(userTokens.length, detailRatio);
+            const coverageLabel = getCoverageLabel(coverageRatio);
+            const structureLabel = hasStructure(userText) ? 'есть' : 'нет';
+            const knowledgeLabel = getKnowledgeLabel(detailRatio, coverageRatio);
+
+            const missingText = missing.length
+                ? `Усилить: ${escapeHtml(missing.slice(0, 6).join(', '))}.`
+                : 'Ключевые термины покрыты.';
+
+            return {
+                summary: `Итог: ${knowledgeLabel}.`,
+                detailLabel,
+                coverageLabel,
+                structureLabel,
+                wordCount: userTokens.length,
+                coveragePercent: Math.round(coverageRatio * 100),
+                missingText
+            };
+        }
+
+        function normalizeText(text) {
+            return text
+                .replace(/```[\s\S]*?```/g, ' ')
+                .replace(/`[^`]*`/g, ' ')
+                .toLowerCase()
+                .replace(/[^a-zа-я0-9\s-]/gi, ' ')
+                .replace(/\s+/g, ' ')
+                .trim();
+        }
+
+        function tokenize(text) {
+            if (!text) return [];
+            return text
+                .split(' ')
+                .map((word) => word.trim())
+                .filter((word) => word.length >= 3 && !STOP_WORDS.has(word));
+        }
+
+        function extractKeywords(tokens, limit) {
+            const freq = new Map();
+            tokens.forEach((token) => {
+                freq.set(token, (freq.get(token) || 0) + 1);
+            });
+            return Array.from(freq.entries())
+                .sort((a, b) => b[1] - a[1])
+                .map(([word]) => word)
+                .slice(0, limit);
+        }
+
+        function getDetailLabel(userWordCount, detailRatio) {
+            if (userWordCount < 30 || detailRatio < 0.35) return 'кратко';
+            if (detailRatio < 0.75) return 'средне';
+            return 'развернуто';
+        }
+
+        function getCoverageLabel(coverageRatio) {
+            if (coverageRatio < 0.35) return 'низкое';
+            if (coverageRatio < 0.7) return 'среднее';
+            return 'высокое';
+        }
+
+        function getKnowledgeLabel(detailRatio, coverageRatio) {
+            const score = (Math.min(detailRatio, 1) + coverageRatio) / 2;
+            if (score < 0.4) return 'знания не подтверждаются';
+            if (score < 0.7) return 'знания подтверждаются частично';
+            return 'знания подтверждаются';
+        }
+
+        function hasStructure(text) {
+            return /(^|\n)\s*([-*]|\d+\.)\s+/.test(text);
+        }
+
+        const STOP_WORDS = new Set([
+            'и', 'в', 'на', 'что', 'это', 'как', 'то', 'а', 'но', 'с', 'по', 'для', 'не',
+            'ли', 'или', 'при', 'из', 'к', 'у', 'о', 'от', 'до', 'так', 'же', 'бы', 'ее',
+            'его', 'их', 'мы', 'вы', 'они', 'она', 'он', 'оно', 'там', 'тут', 'тоже',
+            'the', 'and', 'or', 'for', 'with', 'that', 'this', 'are', 'was', 'were',
+            'into', 'from', 'then', 'than', 'when', 'where', 'what', 'why', 'how', 'you',
+            'your', 'their', 'our', 'has', 'have', 'had', 'its', 'can', 'will', 'not'
+        ]);
 
         // Следующий вопрос
         nextQuestionBtn.addEventListener('click', async () => {
