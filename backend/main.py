@@ -17,7 +17,7 @@ from compiler import get_compiler
 
 init_db()
 
-app = FastAPI(title="Interview Practice Platform", version="1.0.0")
+app = FastAPI(title="Cloudtest", version="1.0.0")
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STATIC_DIR = os.path.join(BASE_DIR, "frontend", "static")

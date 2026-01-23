@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Claude Tests - Платформа для подготовки к интервью</title>
+    <title>Cloudtest - Минималистичный тренажер собеседований</title>
     <link rel="stylesheet" href="/static/style.css">
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
@@ -32,7 +32,7 @@
 <body class="bg-gradient-to-br from-gray-50 via-white to-gray-50">
     <header class="header">
         <div class="header-content">
-            <a href="/" class="logo">Claude Tests</a>
+            <a href="/" class="logo">Cloudtest</a>
             <nav class="nav">
                 <a href="/" class="active">Главная</a>
                 <a href="/practice">Вопросы</a>
@@ -52,13 +52,41 @@
                     </svg>
                 </div>
                 <h1 class="text-5xl font-bold text-gray-900 mb-4 tracking-tight">
-                    Добро пожаловать в<br>
-                    <span class="text-[#c17e5e]">Claude Tests</span>
+                    <span class="text-[#c17e5e]">Cloudtest</span>
                 </h1>
                 <p class="text-xl text-gray-600 max-w-2xl mx-auto leading-relaxed">
-                    Платформа для практики технических интервью.<br>
-                    Выбери тему и начни прокачивать свои навыки.
+                    Минималистичный тренажер собеседований.<br>
+                    CLI/Claude/Cursor → .md по промпту → импорт → разбор ответов.
                 </p>
+            </div>
+
+            <!-- Промпт для генерации -->
+            <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-8 mb-8 hover:shadow-md transition-all duration-300">
+                <div class="flex items-center gap-3 mb-4">
+                    <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-purple-500 to-purple-600 flex items-center justify-center">
+                        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M21 12c0 4.418-4.03 8-9 8a9.766 9.766 0 01-4-.8L3 20l.8-5A7.963 7.963 0 013 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path>
+                        </svg>
+                    </div>
+                    <div>
+                        <h2 class="text-2xl font-semibold text-gray-900">Промпт для CLI/Claude/Cursor</h2>
+                        <p class="text-sm text-gray-500 mt-0.5">Сгенерируй .md файл и импортируй</p>
+                    </div>
+                </div>
+                <pre id="promptText" class="bg-gray-50 border border-gray-200 rounded-lg p-4 text-sm leading-relaxed text-gray-800 whitespace-pre-wrap">Сгенерируй файл .md по FORMAT.md из репозитория Cloudtest.
+
+Тема: &lt;укажи тему&gt;
+Требования:
+- 10-20 вопросов
+- Ответы развернутые, с объяснениями "почему"
+- Реальные вопросы для собеса
+- Укажи сложность и тип
+- Строго соблюдай формат</pre>
+                <div class="mt-4">
+                    <button id="copyPromptBtn" class="px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition-colors">
+                        Скопировать промпт
+                    </button>
+                </div>
             </div>
 
             <!-- Импорт -->
@@ -71,7 +99,7 @@
                     </div>
                     <div>
                         <h2 class="text-2xl font-semibold text-gray-900">Импорт</h2>
-                        <p class="text-sm text-gray-500 mt-0.5">Загрузи .md файл с вопросами или задачами</p>
+                        <p class="text-sm text-gray-500 mt-0.5">Загрузи .md с вопросами или задачами</p>
                     </div>
                 </div>
                 
@@ -164,6 +192,18 @@
 
     <script src="/static/app.js"></script>
     <script>
+        // Промпт для генерации
+        const promptText = document.getElementById('promptText');
+        const copyPromptBtn = document.getElementById('copyPromptBtn');
+
+        copyPromptBtn.addEventListener('click', async () => {
+            const success = await copyToClipboard(promptText.textContent.trim());
+            showNotification(
+                success ? 'Промпт скопирован' : 'Не удалось скопировать',
+                success ? 'success' : 'error'
+            );
+        });
+
         // Обработка загрузки файла
         const uploadArea = document.getElementById('uploadArea');
         const fileInput = document.getElementById('fileInput');
