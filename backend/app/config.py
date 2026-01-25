@@ -17,6 +17,12 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 60
     openrouter_api_key: str | None = None
+    openrouter_model: str = "anthropic/claude-3.5-sonnet"
+    openrouter_fallback_model: str | None = "openai/gpt-4o-mini"
+    openrouter_embedding_model: str = "openai/text-embedding-3-small"
+    chromadb_host: str = "localhost"
+    chromadb_port: int = 8000
+    chromadb_collection_prefix: str = "user"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
