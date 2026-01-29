@@ -6,6 +6,7 @@ import { AnswerInput } from "@/components/chat/answer-input"
 import { AnalysisPanel } from "@/components/chat/analysis-panel"
 import { QuestionCard } from "@/components/chat/question-card"
 import { SessionHistoryPanel } from "@/components/chat/session-history-panel"
+import { TemplateSelectorModal } from "@/components/chat/template-selector-modal"
 import {
   Card,
   CardContent,
@@ -22,6 +23,7 @@ const QUESTION = {
 export default function ChatPage() {
   const [answer, setAnswer] = useState("")
   const [loading, setLoading] = useState(false)
+  const [isModalOpen, setIsModalOpen] = useState(false)
   const [analysis, setAnalysis] = useState<{
     understanding: number
     gaps: { label: string; done: boolean; hint?: string }[]
@@ -66,21 +68,37 @@ export default function ChatPage() {
   }
 
   const handleNewSession = () => {
-    console.log("Create new session")
+    setIsModalOpen(true)
   }
 
   const handleSelectSession = (sessionId: number) => {
     console.log("Select session:", sessionId)
   }
 
+  const handleTemplateSelect = async (
+    template: string,
+    topic: string,
+    level: string
+  ) => {
+    console.log("Creating session:", { template, topic, level })
+    setIsModalOpen(false)
+  }
+
   return (
-    <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
-      <aside className="space-y-4">
-        <SessionHistoryPanel
-          onNewSession={handleNewSession}
-          onSelectSession={handleSelectSession}
-        />
-      </aside>
+    <>
+      <TemplateSelectorModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        onSelect={handleTemplateSelect}
+      />
+      
+      <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
+        <aside className="space-y-4">
+          <SessionHistoryPanel
+            onNewSession={handleNewSession}
+            onSelectSession={handleSelectSession}
+          />
+        </aside>
 
       <section className="space-y-4">
         <QuestionCard {...QUESTION} />
@@ -99,7 +117,8 @@ export default function ChatPage() {
           </Card>
         )}
       </section>
-    </div>
+      </div>
+    </>
   )
 }
 
