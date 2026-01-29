@@ -120,10 +120,91 @@ def get_template(template_type: TemplateType) -> SessionTemplate:
     return factory()
 
 
+class InterviewPrepTemplate(SessionTemplate):
+    """
+    Interview Prep режим: быстрые вопросы для подготовки к интервью.
+    
+    Особенности:
+    - Короткие вопросы (2-3 минуты на ответ)
+    - Фокус на weak areas из графа
+    - Прогрессия сложности
+    - Практические примеры обязательны
+    """
+    
+    def get_system_prompt(self, topic: str, user_context: dict | None = None) -> str:
+        weak_areas = user_context.get('weak_areas', []) if user_context else []
+        weak_areas_text = ', '.join(weak_areas) if weak_areas else 'не определены'
+        
+        return f"""Ты — интервьюер для технического собеседования по теме: {topic}.
+
+Твоя задача: задавать короткие, конкретные вопросы для проверки понимания.
+
+Правила:
+1. Вопросы должны быть короткими (1-2 предложения)
+2. Требуй конкретных примеров и чисел
+3. Фокусируйся на практическом применении
+4. Если студент ошибается — задай уточняющий вопрос
+
+Слабые области студента: {weak_areas_text}
+
+Начинай с базовых вопросов, постепенно усложняй."""
+    
+    def get_question_prompt(
+        self,
+        topic: str,
+        iteration_number: int,
+        previous_answers: list[str] | None = None,
+        weak_areas: list[str] | None = None
+    ) -> str:
+        context = ""
+        if previous_answers and len(previous_answers) > 0:
+            last_answer = previous_answers[-1][:200]  # Первые 200 символов
+            context = f"\nПредыдущий ответ студента: {last_answer}..."
+        
+        weak_focus = ""
+        if weak_areas:
+            weak_focus = f"\nСлабые области: {', '.join(weak_areas[:2])}"
+        
+        difficulty = "базовый" if iteration_number <= 2 else "средний" if iteration_number <= 4 else "продвинутый"
+        
+        return f"""Сгенерируй следующий вопрос для интервью по теме: {topic}
+
+Итерация: {iteration_number}
+Уровень сложности: {difficulty}{context}{weak_focus}
+
+Требования:
+- Вопрос должен быть коротким и конкретным
+- Требуй практических примеров
+- Если предыдущий ответ слабый — задай уточняющий вопрос
+- Если ответ сильный — переходи к новому аспекту темы
+
+Верни только текст вопроса, без дополнительных пояснений."""
+    
+    def get_feedback_criteria(self) -> list[str]:
+        return [
+            "Конкретность ответа (есть ли примеры?)",
+            "Практическое понимание (может ли применить?)",
+            "Точность терминологии",
+            "Скорость ответа (для интервью важна)",
+        ]
+
+
 def _create_interview_prep_template() -> SessionTemplate:
-    """Placeholder для Interview Prep template."""
-    # Будет реализовано в следующем коммите
-    raise NotImplementedError("Interview Prep template not yet implemented")
+    """Создаёт Interview Prep template."""
+    metadata = TemplateMetadata(
+        name="Interview Prep",
+        description="Быстрая подготовка к техническому интервью",
+        recommended_duration_minutes=30,
+        target_audience="Кандидаты готовящиеся к собеседованиям",
+        question_config=QuestionConfig(
+            max_questions=10,
+            time_per_question_minutes=3,
+            difficulty_progression=True,
+            focus_on_weak_areas=True,
+            include_followups=True,
+        )
+    )
+    return InterviewPrepTemplate(metadata)
 
 
 def _create_system_design_template() -> SessionTemplate:
