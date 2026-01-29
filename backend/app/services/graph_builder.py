@@ -561,6 +561,28 @@ class NullGraphBuilder(GraphBuilderService):
     ) -> list[dict[str, Any]]:
         return []
 
+    async def calculate_blind_zones(
+        self,
+        user_id: str,
+        topic: str | None = None,
+        min_mastery_threshold: float = 0.7,
+    ) -> dict[str, Any]:
+        return {
+            "unexplored_branches": [],
+            "weak_connections": [],
+            "missing_prerequisites": [],
+            "total_blind_zones": 0,
+        }
+
+    async def get_learning_progress(self, user_id: str, topic: str | None = None) -> dict[str, Any]:
+        return {
+            "total_concepts": 0,
+            "mastered": 0,
+            "partial": 0,
+            "weak": 0,
+            "average_mastery": 0.0,
+        }
+
     async def health_check(self) -> bool:
         return False
 
