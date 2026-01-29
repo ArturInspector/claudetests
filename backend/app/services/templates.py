@@ -207,14 +207,171 @@ def _create_interview_prep_template() -> SessionTemplate:
     return InterviewPrepTemplate(metadata)
 
 
+class SystemDesignTemplate(SessionTemplate):
+    """
+    System Design режим: архитектурные вопросы с trade-offs.
+    
+    Особенности:
+    - Открытые вопросы (5-10 минут на ответ)
+    - Обязательный анализ trade-offs
+    - Масштабируемость и надёжность
+    - Реальные кейсы
+    """
+    
+    def get_system_prompt(self, topic: str, user_context: dict | None = None) -> str:
+        return f"""Ты — архитектор системы, проводящий System Design интервью по теме: {topic}.
+
+Твоя задача: задавать открытые архитектурные вопросы.
+
+Правила:
+1. Вопросы должны требовать анализа trade-offs
+2. Спрашивай про масштабируемость, надёжность, производительность
+3. Требуй обоснования архитектурных решений
+4. Задавай уточняющие вопросы про edge cases
+
+Формат: "Спроектируй систему для..." или "Как бы ты решил проблему..."
+
+Оценивай не только решение, но и процесс мышления."""
+    
+    def get_question_prompt(
+        self,
+        topic: str,
+        iteration_number: int,
+        previous_answers: list[str] | None = None,
+        weak_areas: list[str] | None = None
+    ) -> str:
+        context = ""
+        if previous_answers and len(previous_answers) > 0:
+            last_answer = previous_answers[-1][:300]
+            context = f"\nПредыдущее решение: {last_answer}..."
+        
+        return f"""Сгенерируй System Design вопрос по теме: {topic}
+
+Итерация: {iteration_number}{context}
+
+Требования:
+- Вопрос должен быть открытым (нет единственно правильного ответа)
+- Требуй анализа trade-offs
+- Включи constraints (например: "1M пользователей", "99.9% uptime")
+- Если предыдущий ответ не рассмотрел trade-offs — задай уточняющий вопрос
+
+Примеры хороших вопросов:
+- "Спроектируй URL shortener для 100M запросов в день"
+- "Как обеспечить консистентность в распределённой системе?"
+
+Верни только текст вопроса."""
+    
+    def get_feedback_criteria(self) -> list[str]:
+        return [
+            "Анализ trade-offs (рассмотрены ли альтернативы?)",
+            "Масштабируемость решения",
+            "Учёт edge cases",
+            "Обоснование выбора технологий",
+        ]
+
+
+class DeepDiveTemplate(SessionTemplate):
+    """
+    Deep Dive режим: глубокое изучение с детальным разбором.
+    
+    Особенности:
+    - Длинные сессии (60+ минут)
+    - Последовательное углубление в тему
+    - Связь между концептами
+    - Теория + практика
+    """
+    
+    def get_system_prompt(self, topic: str, user_context: dict | None = None) -> str:
+        prior_knowledge = user_context.get('prior_knowledge', []) if user_context else []
+        knowledge_text = ', '.join(prior_knowledge[:5]) if prior_knowledge else 'отсутствует'
+        
+        return f"""Ты — наставник для глубокого изучения темы: {topic}.
+
+Твоя задача: провести студента от основ к продвинутым концептам.
+
+Правила:
+1. Начинай с фундаментальных концептов
+2. Постепенно углубляйся, связывая новое с известным
+3. Требуй как теоретического понимания, так и практических примеров
+4. Задавай "почему?" и "как это связано с...?"
+
+Известные студенту концепты: {knowledge_text}
+
+Строй вопросы так, чтобы создать цельную картину темы."""
+    
+    def get_question_prompt(
+        self,
+        topic: str,
+        iteration_number: int,
+        previous_answers: list[str] | None = None,
+        weak_areas: list[str] | None = None
+    ) -> str:
+        context = ""
+        if previous_answers and len(previous_answers) > 0:
+            # Берём больше контекста для deep dive
+            recent = previous_answers[-2:] if len(previous_answers) > 1 else previous_answers
+            context = "\n".join([f"- {ans[:200]}..." for ans in recent])
+            context = f"\nПредыдущие ответы:\n{context}"
+        
+        phase = "основы" if iteration_number <= 3 else "углубление" if iteration_number <= 6 else "продвинутые концепты"
+        
+        return f"""Сгенерируй вопрос для Deep Dive сессии по теме: {topic}
+
+Итерация: {iteration_number}
+Фаза: {phase}{context}
+
+Требования:
+- Вопрос должен углублять понимание темы
+- Связывай новый материал с предыдущими ответами
+- Требуй объяснения "почему" и "как"
+- В фазе "основы" — фундаментальные концепты
+- В фазе "углубление" — связи между концептами
+- В фазе "продвинутые" — edge cases и оптимизации
+
+Верни только текст вопроса."""
+    
+    def get_feedback_criteria(self) -> list[str]:
+        return [
+            "Глубина понимания (не поверхностно ли?)",
+            "Связь с другими концептами",
+            "Теоретическое обоснование",
+            "Практические примеры",
+            "Понимание 'почему' а не только 'что'",
+        ]
+
+
 def _create_system_design_template() -> SessionTemplate:
-    """Placeholder для System Design template."""
-    # Будет реализовано в следующем коммите
-    raise NotImplementedError("System Design template not yet implemented")
+    """Создаёт System Design template."""
+    metadata = TemplateMetadata(
+        name="System Design",
+        description="Архитектурные вопросы с анализом trade-offs",
+        recommended_duration_minutes=60,
+        target_audience="Инженеры уровня Senior+",
+        question_config=QuestionConfig(
+            max_questions=5,
+            time_per_question_minutes=10,
+            difficulty_progression=False,  # Все вопросы сложные
+            focus_on_weak_areas=False,  # Фокус на целостной архитектуре
+            include_followups=True,
+        )
+    )
+    return SystemDesignTemplate(metadata)
 
 
 def _create_deep_dive_template() -> SessionTemplate:
-    """Placeholder для Deep Dive template."""
-    # Будет реализовано в следующем коммите
-    raise NotImplementedError("Deep Dive template not yet implemented")
+    """Создаёт Deep Dive template."""
+    metadata = TemplateMetadata(
+        name="Deep Dive",
+        description="Глубокое последовательное изучение темы",
+        recommended_duration_minutes=90,
+        target_audience="Все уровни, желающие глубоко понять тему",
+        question_config=QuestionConfig(
+            max_questions=12,
+            time_per_question_minutes=7,
+            difficulty_progression=True,
+            focus_on_weak_areas=True,
+            include_followups=True,
+        )
+    )
+    return DeepDiveTemplate(metadata)
 
