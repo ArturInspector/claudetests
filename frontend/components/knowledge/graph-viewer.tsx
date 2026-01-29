@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { Card } from "@/components/ui/card";
+import { NodeDetailsPanel } from "./node-details-panel";
 
 // Динамический импорт для избежания SSR проблем с Three.js
 const ForceGraph3D = dynamic(() => import("react-force-graph-3d"), {
@@ -230,34 +231,19 @@ export function GraphViewer() {
         </div>
       </div>
 
-      {/* Информация о выбранном узле */}
+      {/* Детальная панель выбранного узла */}
       {selectedNode && (
-        <div className="absolute top-4 left-4 bg-card/90 backdrop-blur-sm border rounded-lg p-4 max-w-xs">
-          <div className="flex items-start justify-between mb-2">
-            <h3 className="font-semibold text-sm">{selectedNode.name}</h3>
-            <button
-              onClick={() => setSelectedNode(null)}
-              className="text-muted-foreground hover:text-foreground"
-            >
-              ✕
-            </button>
-          </div>
-          <div className="space-y-2 text-xs">
-            <div>
-              <span className="text-muted-foreground">Тема:</span>{" "}
-              <span>{selectedNode.topic || "Не указана"}</span>
-            </div>
-            <div>
-              <span className="text-muted-foreground">Mastery:</span>{" "}
-              <span className="font-semibold">
-                {((selectedNode.mastery_level || 0) * 100).toFixed(0)}%
-              </span>
-            </div>
-            <div>
-              <span className="text-muted-foreground">Повторений:</span>{" "}
-              <span>{selectedNode.times_reviewed || 0}</span>
-            </div>
-          </div>
+        <div className="absolute top-4 left-4 max-w-md">
+          <NodeDetailsPanel
+            node={selectedNode}
+            onClose={() => setSelectedNode(null)}
+            onNodeSelect={(nodeId) => {
+              const node = graphData.nodes.find((n) => n.id === nodeId);
+              if (node) {
+                handleNodeClick(node);
+              }
+            }}
+          />
         </div>
       )}
 
