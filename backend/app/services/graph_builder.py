@@ -344,6 +344,185 @@ Return ONLY the JSON, no additional text.
         
         return None
 
+    async def build_relationships(
+        self,
+        user_id: str,
+        concepts: list[dict[str, Any]],
+        answer: str,
+        session_id: str,
+    ) -> list[dict[str, Any]]:
+        """
+        Построить связи между концептами на основе контекста ответа.
+        
+        Args:
+            user_id: UUID пользователя
+            concepts: Список извлечённых концептов
+            answer: Ответ пользователя (для контекста)
+            session_id: UUID сессии
+            
+        Returns:
+            Список созданных relationships
+        """
+        if not self._llm or len(concepts) < 2:
+            return []
+
+        prompt = self._build_relationship_prompt(concepts, answer)
+        
+        try:
+            response = await self._llm.generate(
+                prompt=prompt,
+                system="You are a knowledge graph relationship builder. Return only valid JSON.",
+            )
+            
+            relationships_data = self._parse_relationships_response(response)
+            
+            # Создаём relationships в Neo4j
+            relationships = []
+            for rel_data in relationships_data:
+                rel = await self._create_relationship(
+                    user_id=user_id,
+                    session_id=session_id,
+                    rel_data=rel_data,
+                    concepts=concepts,
+                )
+                if rel:
+                    relationships.append(rel)
+            
+            log.info(
+                "Created %d relationships for user %s in session %s",
+                len(relationships),
+                user_id,
+                session_id,
+            )
+            return relationships
+            
+        except Exception as exc:
+            log.error("Failed to build relationships: %s", exc)
+            return []
+
+    def _build_relationship_prompt(
+        self,
+        concepts: list[dict[str, Any]],
+        answer: str,
+    ) -> str:
+        """Prompt для определения связей между концептами."""
+        concept_names = [c.get("name", c.get("concept_id", "")) for c in concepts]
+        
+        return f"""
+Analyze relationships between these concepts based on the user's answer.
+
+**Concepts:**
+{json.dumps(concept_names, indent=2)}
+
+**User's Answer:**
+{answer}
+
+**Task:**
+Identify semantic relationships between concepts. Types:
+- "prerequisite": concept A must be understood before B
+- "similar": concepts are related/analogous
+- "opposite": concepts contrast each other
+- "example_of": concept A is an example/instance of B
+- "component_of": concept A is part of B
+
+**Output Format (JSON only):**
+{{
+  "relationships": [
+    {{
+      "from_concept": "concept name",
+      "to_concept": "concept name",
+      "type": "prerequisite|similar|opposite|example_of|component_of",
+      "strength": 0.8,
+      "reason": "brief explanation"
+    }}
+  ]
+}}
+
+Return ONLY the JSON, no additional text.
+""".strip()
+
+    def _parse_relationships_response(self, response: str) -> list[dict[str, Any]]:
+        """Парсить JSON с relationships от LLM."""
+        try:
+            cleaned = response.strip()
+            if cleaned.startswith("```"):
+                start = cleaned.find("{")
+                end = cleaned.rfind("}") + 1
+                if start != -1 and end > start:
+                    cleaned = cleaned[start:end]
+            
+            data = json.loads(cleaned)
+            return data.get("relationships", [])
+        except json.JSONDecodeError as exc:
+            log.error("Failed to parse relationships response: %s", exc)
+            return []
+
+    async def _create_relationship(
+        self,
+        user_id: str,
+        session_id: str,
+        rel_data: dict[str, Any],
+        concepts: list[dict[str, Any]],
+    ) -> dict[str, Any] | None:
+        """
+        Создать relationship между концептами в Neo4j.
+        
+        Args:
+            user_id: UUID пользователя
+            session_id: UUID сессии
+            rel_data: Данные связи от LLM
+            concepts: Список концептов (для валидации)
+            
+        Returns:
+            Созданный relationship или None
+        """
+        from_name = rel_data.get("from_concept")
+        to_name = rel_data.get("to_concept")
+        rel_type = rel_data.get("type", "similar")
+        strength = float(rel_data.get("strength", 0.5))
+        
+        if not from_name or not to_name:
+            return None
+        
+        try:
+            async with self._session() as session:
+                result = await session.run(
+                    """
+                    MATCH (c1:Concept {name: $from_name})
+                    MATCH (c2:Concept {name: $to_name})
+                    WHERE c1 <> c2
+                    
+                    MERGE (c1)-[r:RELATES_TO {relationship_type: $rel_type}]->(c2)
+                    ON CREATE SET
+                        r.strength = $strength,
+                        r.discovered_in_session = $session_id,
+                        r.created_at = datetime()
+                    ON MATCH SET
+                        r.strength = (r.strength + $strength) / 2
+                    
+                    RETURN r, c1.name as from_name, c2.name as to_name
+                    """,
+                    from_name=from_name,
+                    to_name=to_name,
+                    rel_type=rel_type,
+                    strength=strength,
+                    session_id=session_id,
+                )
+                
+                record = await result.single()
+                if record:
+                    return {
+                        "from": record["from_name"],
+                        "to": record["to_name"],
+                        "type": rel_type,
+                        "strength": strength,
+                    }
+                
+        except Exception as exc:
+            log.error("Failed to create relationship: %s", exc)
+        
+        return None
+
 
 class NullGraphBuilder(GraphBuilderService):
     """No-op граф билдер для случаев когда Neo4j недоступен."""
@@ -369,6 +548,15 @@ class NullGraphBuilder(GraphBuilderService):
         question: str,
         answer: str,
         topic: str,
+        session_id: str,
+    ) -> list[dict[str, Any]]:
+        return []
+
+    async def build_relationships(
+        self,
+        user_id: str,
+        concepts: list[dict[str, Any]],
+        answer: str,
         session_id: str,
     ) -> list[dict[str, Any]]:
         return []
