@@ -3,10 +3,13 @@ from __future__ import annotations
 
 import json
 import re
-from typing import TypedDict
+from typing import TypedDict, TYPE_CHECKING
 
 from app.services.llm.base import LLMClient
 from app.services.rag import RAGService
+
+if TYPE_CHECKING:
+    from app.services.graph_builder import GraphBuilderService
 
 
 class StructuredCriteria(TypedDict):
@@ -293,5 +296,162 @@ async def analyze_answer_hybrid(
         weaknesses=llm_result['weaknesses'],
         mentioned_concepts=llm_result['mentioned_concepts'],
         blind_zones=llm_result['missing_connections']
+    )
+
+
+def calculate_graph_blind_zones(
+    user_graph: dict,
+    mentioned_concepts: list[str]
+) -> list[str]:
+    """
+    Вычисляет blind zones на основе knowledge graph.
+    
+    Blind zones — это:
+    1. Unexplored branches (концепты связанные с известными, но не изученные)
+    2. Weak connections (mastery_level < 0.5)
+    3. Forgotten concepts (давно не повторялись)
+    
+    Args:
+        user_graph: Граф знаний пользователя из Neo4j
+        mentioned_concepts: Концепты упомянутые в текущем ответе
+    
+    Returns:
+        Список blind zones с описаниями
+    """
+    blind_zones = []
+    
+    concepts = user_graph.get('concepts', [])
+    knowledge = user_graph.get('knowledge', [])
+    
+    if not concepts:
+        return ['Граф знаний пуст — начните с основ темы']
+    
+    # Строим map концептов по имени для быстрого доступа
+    concept_map = {c.get('name', ''): c for c in concepts}
+    
+    # Строим map mastery levels
+    mastery_map = {}
+    for k in knowledge:
+        # k — это KNOWS relationship
+        concept_name = k.get('end_node_name')  # Предполагаем что Neo4j вернёт имя
+        if concept_name:
+            mastery_map[concept_name] = k.get('mastery_level', 0.0)
+    
+    # 1. Находим слабые концепты (mastery < 0.5)
+    weak_concepts = [
+        name for name, level in mastery_map.items()
+        if level < 0.5
+    ]
+    
+    if weak_concepts:
+        blind_zones.append(
+            f"Слабое понимание: {', '.join(weak_concepts[:3])}"
+        )
+    
+    # 2. Находим неупомянутые концепты из графа
+    mentioned_set = set(c.lower() for c in mentioned_concepts)
+    known_concepts = set(concept_map.keys())
+    
+    not_mentioned = [
+        name for name in known_concepts
+        if name.lower() not in mentioned_set
+    ]
+    
+    if not_mentioned and len(not_mentioned) > 2:
+        blind_zones.append(
+            f"Не упомянуты связанные концепты: {', '.join(not_mentioned[:3])}"
+        )
+    
+    # 3. Проверяем есть ли unexplored branches
+    # (концепты с низким times_reviewed)
+    unexplored = [
+        c.get('name') for c in concepts
+        if c.get('times_reviewed', 0) <= 1
+    ]
+    
+    if unexplored:
+        blind_zones.append(
+            f"Мало практики: {', '.join(unexplored[:2])}"
+        )
+    
+    return blind_zones if blind_zones else ['Blind zones не обнаружены']
+
+
+async def analyze_with_graph(
+    llm: LLMClient,
+    rag: RAGService,
+    graph: 'GraphBuilderService',
+    user_id: str,
+    question: str,
+    answer: str,
+    topic: str,
+    session_id: str,
+    required_terms: list[str] | None = None
+) -> AnalysisResult:
+    """
+    Полный анализ с интеграцией knowledge graph.
+    
+    Workflow:
+    1. Структурная проверка
+    2. LLM анализ нюансов
+    3. Извлечение концептов и обновление графа
+    4. Вычисление graph-based blind zones
+    
+    Args:
+        llm: LLM клиент
+        rag: RAG сервис
+        graph: Graph builder сервис
+        user_id: ID пользователя (строка для Neo4j)
+        question: Текст вопроса
+        answer: Текст ответа
+        topic: Тема сессии
+        session_id: ID сессии (строка)
+        required_terms: Ключевые термины
+    
+    Returns:
+        AnalysisResult с полным анализом включая graph blind zones
+    """
+    # Шаг 1-2: Базовый гибридный анализ
+    criteria = analyze_answer_structured(answer, question, required_terms)
+    base_score = calculate_base_score(criteria)
+    
+    llm_result = await analyze_with_llm(
+        llm, rag, int(user_id) if user_id.isdigit() else 0, question, answer, criteria
+    )
+    
+    # Шаг 3: Извлекаем концепты и обновляем граф
+    extracted_concepts = await graph.extract_concepts(
+        user_id=user_id,
+        question=question,
+        answer=answer,
+        topic=topic,
+        session_id=session_id
+    )
+    
+    # Объединяем концепты из LLM и graph extraction
+    all_concepts = list(set(
+        llm_result['mentioned_concepts'] +
+        [c.get('name', '') for c in extracted_concepts if c.get('name')]
+    ))
+    
+    # Шаг 4: Получаем граф и вычисляем blind zones
+    user_graph = await graph.get_user_graph(user_id=user_id, depth=2)
+    graph_blind_zones = calculate_graph_blind_zones(user_graph, all_concepts)
+    
+    # Комбинируем blind zones из LLM и графа
+    combined_blind_zones = list(set(
+        llm_result['missing_connections'] + graph_blind_zones
+    ))
+    
+    # Финальный score с учётом графа
+    final_score = base_score * 0.7 + llm_result['nuance_score'] * 0.3
+    
+    return AnalysisResult(
+        understanding_score=final_score,
+        structured_criteria=criteria,
+        strengths=llm_result['strengths'],
+        weaknesses=llm_result['weaknesses'],
+        mentioned_concepts=all_concepts,
+        blind_zones=combined_blind_zones
     )
 
