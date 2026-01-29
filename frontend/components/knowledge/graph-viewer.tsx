@@ -3,7 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { NodeDetailsPanel } from "./node-details-panel";
+import { BlindZonesOverlay } from "./blind-zones-overlay";
 
 // Динамический импорт для избежания SSR проблем с Three.js
 const ForceGraph3D = dynamic(() => import("react-force-graph-3d"), {
@@ -35,6 +37,7 @@ export function GraphViewer() {
   const [error, setError] = useState<string | null>(null);
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
   const [hoveredNode, setHoveredNode] = useState<GraphNode | null>(null);
+  const [showBlindZones, setShowBlindZones] = useState(false);
   const fgRef = useRef<any>();
 
   useEffect(() => {
@@ -188,9 +191,30 @@ export function GraphViewer() {
     );
   }
 
+  const handleFocusNode = (nodeName: string) => {
+    const node = graphData.nodes.find((n) => n.name === nodeName);
+    if (node) {
+      handleNodeClick(node);
+      setShowBlindZones(false);
+    }
+  };
+
   return (
-    <Card className="h-full relative overflow-hidden">
-      <ForceGraph3D
+    <>
+      <Card className="h-full relative overflow-hidden">
+        {/* Кнопка Blind Zones */}
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10">
+          <Button
+            onClick={() => setShowBlindZones(true)}
+            variant="default"
+            size="sm"
+            className="shadow-lg"
+          >
+            🔍 Показать Blind Zones
+          </Button>
+        </div>
+
+        <ForceGraph3D
         ref={fgRef}
         graphData={graphData}
         nodeLabel={(node: any) => `${node.name} (mastery: ${(node.mastery_level * 100).toFixed(0)}%)`}
@@ -256,7 +280,15 @@ export function GraphViewer() {
           </p>
         </div>
       )}
-    </Card>
+      </Card>
+
+      {/* Blind Zones Overlay */}
+      <BlindZonesOverlay
+        isVisible={showBlindZones}
+        onClose={() => setShowBlindZones(false)}
+        onFocusNode={handleFocusNode}
+      />
+    </>
   );
 }
 
