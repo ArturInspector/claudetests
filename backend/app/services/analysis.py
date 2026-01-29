@@ -1,8 +1,12 @@
 """Hybrid analysis engine: structured criteria + LLM nuances."""
 from __future__ import annotations
 
+import json
 import re
 from typing import TypedDict
+
+from app.services.llm.base import LLMClient
+from app.services.rag import RAGService
 
 
 class StructuredCriteria(TypedDict):
@@ -152,4 +156,142 @@ def calculate_base_score(criteria: StructuredCriteria) -> float:
         score += 0.1
     
     return min(score, 1.0)
+
+
+def build_llm_analysis_prompt(
+    question: str,
+    answer: str,
+    criteria: StructuredCriteria,
+    context: list[str]
+) -> str:
+    """Строит промпт для LLM анализа нюансов ответа."""
+    context_text = "\n".join(context) if context else "Нет контекста из прошлых ответов."
+    
+    return f"""Проанализируй ответ студента на вопрос. Структурные критерии уже проверены.
+Твоя задача — оценить НЮАНСЫ: глубину понимания, точность формулировок, связность.
+
+Вопрос: {question}
+
+Ответ студента: {answer}
+
+Структурные критерии (уже проверено):
+- Ключевые термины: {'✓' if criteria['mentions_key_terms'] else '✗'}
+- Примеры: {'✓' if criteria['has_examples'] else '✗'}
+- Trade-offs: {'✓' if criteria['explains_tradeoffs'] else '✗'}
+- Техническая глубина: {'✓' if criteria['uses_technical_depth'] else '✗'}
+- Объём: {criteria['word_count']} слов
+
+Контекст из прошлых ответов:
+{context_text}
+
+Верни JSON:
+{{
+  "nuance_score": 0.0-1.0,
+  "strengths": ["сильная сторона 1", "сильная сторона 2"],
+  "weaknesses": ["слабость 1", "слабость 2"],
+  "mentioned_concepts": ["концепт 1", "концепт 2"],
+  "missing_connections": ["что упущено 1", "что упущено 2"]
+}}
+
+Только JSON, без дополнительного текста."""
+
+
+async def analyze_with_llm(
+    llm: LLMClient,
+    rag: RAGService,
+    user_id: int,
+    question: str,
+    answer: str,
+    criteria: StructuredCriteria
+) -> dict:
+    """
+    Использует LLM для анализа нюансов ответа.
+    
+    Args:
+        llm: LLM клиент
+        rag: RAG сервис для контекста
+        user_id: ID пользователя
+        question: Текст вопроса
+        answer: Текст ответа
+        criteria: Результаты структурной проверки
+    
+    Returns:
+        Словарь с результатами LLM анализа
+    """
+    # Получаем контекст из прошлых ответов
+    context = await rag.similar_context(user_id=user_id, text=question, limit=3)
+    
+    # Строим промпт
+    prompt = build_llm_analysis_prompt(question, answer, criteria, context)
+    
+    # Запрашиваем LLM
+    response = await llm.generate(prompt)
+    
+    # Парсим JSON ответ
+    try:
+        # Извлекаем JSON из ответа (может быть обёрнут в markdown)
+        json_match = re.search(r'\{.*\}', response, re.DOTALL)
+        if json_match:
+            result = json.loads(json_match.group(0))
+        else:
+            result = json.loads(response)
+        
+        return {
+            'nuance_score': result.get('nuance_score', 0.5),
+            'strengths': result.get('strengths', []),
+            'weaknesses': result.get('weaknesses', []),
+            'mentioned_concepts': result.get('mentioned_concepts', []),
+            'missing_connections': result.get('missing_connections', [])
+        }
+    except (json.JSONDecodeError, AttributeError):
+        # Fallback если LLM не вернул валидный JSON
+        return {
+            'nuance_score': 0.5,
+            'strengths': ['Ответ получен'],
+            'weaknesses': ['Не удалось детально проанализировать'],
+            'mentioned_concepts': extract_mentioned_concepts(answer),
+            'missing_connections': []
+        }
+
+
+async def analyze_answer_hybrid(
+    llm: LLMClient,
+    rag: RAGService,
+    user_id: int,
+    question: str,
+    answer: str,
+    required_terms: list[str] | None = None
+) -> AnalysisResult:
+    """
+    Гибридный анализ: структурные критерии + LLM нюансы.
+    
+    Args:
+        llm: LLM клиент
+        rag: RAG сервис
+        user_id: ID пользователя
+        question: Текст вопроса
+        answer: Текст ответа
+        required_terms: Ключевые термины для проверки
+    
+    Returns:
+        AnalysisResult с полным анализом
+    """
+    # Шаг 1: Структурная проверка (быстро, детерминированно)
+    criteria = analyze_answer_structured(answer, question, required_terms)
+    base_score = calculate_base_score(criteria)
+    
+    # Шаг 2: LLM анализ нюансов (медленно, но глубоко)
+    llm_result = await analyze_with_llm(llm, rag, user_id, question, answer, criteria)
+    
+    # Шаг 3: Комбинируем результаты (70% структура, 30% LLM)
+    final_score = base_score * 0.7 + llm_result['nuance_score'] * 0.3
+    
+    return AnalysisResult(
+        understanding_score=final_score,
+        structured_criteria=criteria,
+        strengths=llm_result['strengths'],
+        weaknesses=llm_result['weaknesses'],
+        mentioned_concepts=llm_result['mentioned_concepts'],
+        blind_zones=llm_result['missing_connections']
+    )
 
