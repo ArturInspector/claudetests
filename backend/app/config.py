@@ -23,6 +23,9 @@ class Settings(BaseSettings):
     chromadb_host: str = "localhost"
     chromadb_port: int = 8000
     chromadb_collection_prefix: str = "user"
+    neo4j_uri: str = "bolt://localhost:7687"
+    neo4j_user: str = "neo4j"
+    neo4j_password: str = "socratic_graph_2024"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

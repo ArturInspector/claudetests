@@ -37,3 +37,8 @@ class Token(BaseModel):
 class AuthResponse(Token):
     user: UserRead
 
+
+
+
+
+

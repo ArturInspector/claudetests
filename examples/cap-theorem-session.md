@@ -102,3 +102,8 @@ Supply chain нужна consistency (чтобы все видели одинак
 ./learn.sh analyze examples/cap-theorem-session.md
 ```
 
+
+
+
+
+
