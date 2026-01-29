@@ -32,6 +32,8 @@ export function GraphViewer() {
   const [graphData, setGraphData] = useState<GraphData>({ nodes: [], links: [] });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
+  const [hoveredNode, setHoveredNode] = useState<GraphNode | null>(null);
   const fgRef = useRef<any>();
 
   useEffect(() => {
@@ -98,7 +100,58 @@ export function GraphViewer() {
   // Размер узла на основе times_reviewed
   const getNodeSize = (node: GraphNode) => {
     const reviews = node.times_reviewed || 0;
-    return Math.max(4, Math.min(12, 4 + reviews * 1.5));
+    const baseSize = Math.max(4, Math.min(12, 4 + reviews * 1.5));
+    
+    // Увеличиваем размер для выбранного узла
+    if (selectedNode && node.id === selectedNode.id) {
+      return baseSize * 1.5;
+    }
+    
+    return baseSize;
+  };
+
+  // Обработчик клика по узлу
+  const handleNodeClick = (node: any) => {
+    setSelectedNode(node as GraphNode);
+    
+    // Центрируем камеру на узле
+    if (fgRef.current) {
+      const distance = 200;
+      const distRatio = 1 + distance / Math.hypot(node.x, node.y, node.z);
+      
+      fgRef.current.cameraPosition(
+        { x: node.x * distRatio, y: node.y * distRatio, z: node.z * distRatio },
+        node,
+        1000
+      );
+    }
+  };
+
+  // Обработчик hover
+  const handleNodeHover = (node: any) => {
+    setHoveredNode(node as GraphNode | null);
+    
+    // Меняем курсор
+    if (typeof document !== "undefined") {
+      document.body.style.cursor = node ? "pointer" : "default";
+    }
+  };
+
+  // Подсветка связанных узлов
+  const getNodeOpacity = (node: GraphNode) => {
+    if (!selectedNode) return 1;
+    
+    // Выбранный узел всегда яркий
+    if (node.id === selectedNode.id) return 1;
+    
+    // Связанные узлы
+    const isConnected = graphData.links.some(
+      (link) =>
+        (link.source === selectedNode.id && link.target === node.id) ||
+        (link.target === selectedNode.id && link.source === node.id)
+    );
+    
+    return isConnected ? 1 : 0.3;
   };
 
   if (loading) {
@@ -142,6 +195,9 @@ export function GraphViewer() {
         nodeLabel={(node: any) => `${node.name} (mastery: ${(node.mastery_level * 100).toFixed(0)}%)`}
         nodeColor={getNodeColor}
         nodeVal={getNodeSize}
+        nodeOpacity={getNodeOpacity}
+        onNodeClick={handleNodeClick}
+        onNodeHover={handleNodeHover}
         linkDirectionalParticles={2}
         linkDirectionalParticleSpeed={0.005}
         backgroundColor="#0a0a0a"
@@ -173,6 +229,47 @@ export function GraphViewer() {
           <p>Связей: {graphData.links.length}</p>
         </div>
       </div>
+
+      {/* Информация о выбранном узле */}
+      {selectedNode && (
+        <div className="absolute top-4 left-4 bg-card/90 backdrop-blur-sm border rounded-lg p-4 max-w-xs">
+          <div className="flex items-start justify-between mb-2">
+            <h3 className="font-semibold text-sm">{selectedNode.name}</h3>
+            <button
+              onClick={() => setSelectedNode(null)}
+              className="text-muted-foreground hover:text-foreground"
+            >
+              ✕
+            </button>
+          </div>
+          <div className="space-y-2 text-xs">
+            <div>
+              <span className="text-muted-foreground">Тема:</span>{" "}
+              <span>{selectedNode.topic || "Не указана"}</span>
+            </div>
+            <div>
+              <span className="text-muted-foreground">Mastery:</span>{" "}
+              <span className="font-semibold">
+                {((selectedNode.mastery_level || 0) * 100).toFixed(0)}%
+              </span>
+            </div>
+            <div>
+              <span className="text-muted-foreground">Повторений:</span>{" "}
+              <span>{selectedNode.times_reviewed || 0}</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Hover tooltip */}
+      {hoveredNode && !selectedNode && (
+        <div className="absolute top-4 left-4 bg-card/90 backdrop-blur-sm border rounded-lg p-3 pointer-events-none">
+          <p className="font-semibold text-sm">{hoveredNode.name}</p>
+          <p className="text-xs text-muted-foreground">
+            Кликните для деталей
+          </p>
+        </div>
+      )}
     </Card>
   );
 }
