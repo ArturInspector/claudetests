@@ -1,0 +1,46 @@
+{
+  "topic": "CAP Theorem in Distributed Systems",
+  "iteration": 1,
+  "date": "2026-01-25",
+  "understood": [
+    "базовое определение CAP",
+    "различие AP vs CP",
+    "применение к Ethereum",
+    "связь с consensus algorithms"
+  ],
+  "needsWork": [
+    {
+      "area": "partition tolerance implementation",
+      "reason": "знаешь что это, но не понимаешь как технически реализуется. Нет примеров про network splits, quorum, split-brain",
+      "severity": "high"
+    },
+    {
+      "area": "eventual consistency механизмы",
+      "reason": "упоминаешь eventual consistency, но не объясняешь как conflict resolution работает в реальности",
+      "severity": "medium"
+    },
+    {
+      "area": "BFT vs CFT",
+      "reason": "поверхностное понимание Byzantine Fault Tolerance. Не понимаешь разницу с Crash Fault Tolerance",
+      "severity": "high"
+    }
+  ],
+  "recommendations": [
+    "Изучи как Ethereum handles network partitions (uncle blocks, reorg)",
+    "Прочитай про quorum в distributed systems (Raft, Paxos)",
+    "Практика: симулируй network partition в test blockchain",
+    "Deep dive в PBFT vs PoW consensus guarantees"
+  ],
+  "nextFocus": "partition tolerance mechanisms + conflict resolution",
+  "progressScore": {
+    "understanding": 6,
+    "depth": 4,
+    "practical": 3
+  }
+}
+
+
+
+
+
+

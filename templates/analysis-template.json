@@ -1,0 +1,27 @@
+{
+  "topic": "",
+  "iteration": 1,
+  "date": "",
+  "understood": [
+    "концепт 1",
+    "концепт 2"
+  ],
+  "needsWork": [
+    {
+      "area": "specific concept",
+      "reason": "explanation why",
+      "severity": "high|medium|low"
+    }
+  ],
+  "recommendations": [
+    "actionable recommendation 1",
+    "actionable recommendation 2"
+  ],
+  "nextFocus": "main focus for next iteration",
+  "progressScore": {
+    "understanding": "0-10",
+    "depth": "0-10",
+    "practical": "0-10"
+  }
+}
+
