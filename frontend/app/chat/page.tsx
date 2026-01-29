@@ -5,13 +5,10 @@ import { useMemo, useState } from "react"
 import { AnswerInput } from "@/components/chat/answer-input"
 import { AnalysisPanel } from "@/components/chat/analysis-panel"
 import { QuestionCard } from "@/components/chat/question-card"
-import { Button } from "@/components/ui/button"
+import { SessionHistoryPanel } from "@/components/chat/session-history-panel"
 import {
   Card,
   CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
 } from "@/components/ui/card"
 
 const QUESTION = {
@@ -68,27 +65,21 @@ export default function ChatPage() {
     setLoading(false)
   }
 
+  const handleNewSession = () => {
+    console.log("Create new session")
+  }
+
+  const handleSelectSession = (sessionId: number) => {
+    console.log("Select session:", sessionId)
+  }
+
   return (
     <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
       <aside className="space-y-4">
-        <Card className="border-border/60 bg-card/60">
-          <CardHeader>
-            <CardTitle className="text-sm font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-              Sessions
-            </CardTitle>
-            <CardDescription className="text-xs">
-              Quick access to your latest practice sets.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            <Button variant="secondary" className="w-full">
-              + New session
-            </Button>
-            <div className="rounded-lg border border-border/60 bg-background/30 p-3 text-xs text-muted-foreground">
-              Session management is coming next. For now, keep practicing in this draft workspace.
-            </div>
-          </CardContent>
-        </Card>
+        <SessionHistoryPanel
+          onNewSession={handleNewSession}
+          onSelectSession={handleSelectSession}
+        />
       </aside>
 
       <section className="space-y-4">
