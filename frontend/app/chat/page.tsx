@@ -1,5 +1,6 @@
 "use client"
 
+import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
 
 import { ChatInput } from "@/components/chat/chat-input"
@@ -283,6 +284,12 @@ export default function ChatPage() {
                 </button>
               </div>
             ) : null}
+            <Link
+              href="/knowledge"
+              className="ml-3 px-3 py-1 text-[12px] rounded-full border border-border/60 text-muted-foreground hover:text-foreground"
+            >
+              Карта знаний →
+            </Link>
           </div>
         </div>
         <MessageList messages={messages} onRegenerateAction={handleRegenerate} className="flex-1 chat-main__list" />
