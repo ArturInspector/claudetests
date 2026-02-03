@@ -160,6 +160,32 @@ export default function ChatPage() {
     }
   }
 
+  const fetchAnalysis = async (answer: string) => {
+    const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null
+    if (!token) return null
+    try {
+      const resp = await fetch("http://localhost:8000/api/v1/socratic/analyze", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          question: QUESTION.prompt,
+          answer,
+          topic: QUESTION.topic,
+          mode,
+          required_terms: ["partition", "consistency", "availability"],
+        }),
+      })
+      if (!resp.ok) return null
+      return (await resp.json()) as any
+    } catch (err) {
+      console.warn("socratic analyze fallback to local", err)
+      return null
+    }
+  }
+
   const handleSend = async () => {
     if (!input.trim()) return
     const content = input.trim()
@@ -177,7 +203,20 @@ export default function ChatPage() {
     setLoading(true)
     await new Promise((resolve) => setTimeout(resolve, 350))
 
-    const analysis = evaluateAnswer(content)
+    const remote = await fetchAnalysis(content)
+    const local = evaluateAnswer(content)
+    const analysis = remote?.analysis
+      ? {
+          understanding: remote.analysis.understanding ?? local.understanding,
+          confidence: remote.analysis.confidence ?? local.confidence,
+          gaps: local.gaps,
+          notes: local.notes,
+          misconceptions: remote.analysis.misconceptions ?? local.misconceptions,
+          nextDifficulty: remote.analysis.nextDifficulty ?? local.nextDifficulty,
+        }
+      : local
+    const socratic = remote?.socratic ?? { moves: local.socraticMoves, next_step: local.notes }
+    const graph = remote?.graph ?? { hints: local.graphHints }
     const assistantMessage: Message = {
       id: crypto.randomUUID(),
       role: "assistant",
@@ -193,14 +232,11 @@ export default function ChatPage() {
           nextDifficulty: analysis.nextDifficulty,
         },
         socratic: {
-          moves: analysis.socraticMoves,
-          nextStep:
-            analysis.nextDifficulty === "advanced"
-              ? "Переходим к PACELC и latency trade-offs."
-              : "Сначала проговорим базовое определение partition и trade-off.",
+          moves: socratic.moves ?? local.socraticMoves,
+          nextStep: socratic.next_step,
         },
         graph: {
-          hints: analysis.graphHints,
+          hints: graph?.hints ?? local.graphHints,
         },
       },
     }
