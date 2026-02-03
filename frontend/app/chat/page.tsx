@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 
 import { ChatInput } from "@/components/chat/chat-input"
 import { MessageList } from "@/components/chat/message-list"
@@ -14,9 +14,15 @@ const QUESTION = {
   topic: "Distributed systems",
 }
 
+type Mode = "practice" | "interview"
+const STORAGE_KEY = "socratic-chat-thread"
+
 export default function ChatPage() {
   const [input, setInput] = useState("")
   const [loading, setLoading] = useState(false)
+  const [mode, setMode] = useState<Mode>("practice")
+  const [secondsLeft, setSecondsLeft] = useState<number>(45 * 60)
+  const [timerRunning, setTimerRunning] = useState(false)
 
   const initialQuestionMessage = useMemo<Message>(
     () => ({
@@ -38,6 +44,37 @@ export default function ChatPage() {
 
   const [messages, setMessages] = useState<Message[]>([initialQuestionMessage])
 
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY)
+      if (raw) {
+        const parsed = JSON.parse(raw) as Message[]
+        const revived = parsed.map((m) => ({ ...m, timestamp: new Date(m.timestamp) }))
+        if (revived.length) setMessages(revived)
+      }
+    } catch {
+      // ignore broken state
+    }
+  }, [])
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(messages))
+  }, [messages])
+
+  useEffect(() => {
+    if (!timerRunning) return
+    const id = setInterval(() => {
+      setSecondsLeft((prev) => {
+        if (prev <= 1) {
+          setTimerRunning(false)
+          return 0
+        }
+        return prev - 1
+      })
+    }, 1000)
+    return () => clearInterval(id)
+  }, [timerRunning])
+
   const evaluateAnswer = (answer: string) => {
     const normalized = answer.toLowerCase()
     const hasPartition = normalized.includes("partition")
@@ -45,6 +82,8 @@ export default function ChatPage() {
     const hasExample = normalized.includes("например") || normalized.includes("e.g.") || normalized.includes("dynamo") || normalized.includes("mongo")
     const hasNumbers = /\d+/.test(answer)
     const lengthScore = Math.min(1, answer.length / 500)
+    const includesPacelc = normalized.includes("pacelc")
+    const mentionsRaft = normalized.includes("raft") || normalized.includes("paxos")
 
     const gaps: Gap[] = []
     if (!hasPartition) gaps.push({ label: "Опиши, что такое сетевой partition", done: false, hint: "Разрыв связности между нодами" })
@@ -53,7 +92,7 @@ export default function ChatPage() {
 
     const base = 0.3 + lengthScore * 0.3 + (hasTradeoff ? 0.2 : 0) + (hasExample ? 0.1 : 0) + (hasNumbers ? 0.1 : 0)
     const understanding = Math.min(1, base)
-    const confidence = Math.min(1, 0.25 + lengthScore * 0.5 + (hasNumbers ? 0.1 : 0))
+    const confidence = Math.min(1, 0.25 + lengthScore * 0.5 + (hasNumbers ? 0.1 : 0) + (mode === "interview" ? 0.05 : 0))
 
     const moves: SocraticMove[] = []
     if (!hasTradeoff) {
@@ -89,10 +128,24 @@ export default function ChatPage() {
     if (!hasPartition) graphHints.push({ concept: "Partition Tolerance", status: "unexplored", action: "Разобрать сценарий split-brain" })
     if (!hasTradeoff) graphHints.push({ concept: "Consistency vs Availability", status: "weak", action: "Пример AP и CP" })
     if (hasExample && hasTradeoff) graphHints.push({ concept: "PACELC", status: "solid", action: "Сравнить с CAP" })
+    if (mentionsRaft) graphHints.push({ concept: "Consensus (Raft/Paxos)", status: "weak", action: "Связать с CAP" })
 
-    const misconceptions = !hasPartition
-      ? [{ label: "CAP без partition — неполное определение", correction: "Partition tolerance обязательна" }]
-      : []
+    const misconceptions = []
+    if (!hasPartition) {
+      misconceptions.push({ label: "CAP без partition — неполное определение", correction: "Partition tolerance обязательна" })
+    }
+    if (normalized.includes("choose two")) {
+      misconceptions.push({
+        label: "CAP не про выбор любых двух свойств",
+        correction: "Partition считается данностью, выбор — между C и A при P",
+      })
+    }
+    if (includesPacelc && !hasTradeoff) {
+      misconceptions.push({
+        label: "Упомянут PACELC без явного trade-off",
+        correction: "PACELC добавляет latency trade-off к CAP, укажи L",
+      })
+    }
 
     return {
       understanding,
@@ -110,6 +163,7 @@ export default function ChatPage() {
     if (!input.trim()) return
     const content = input.trim()
     setInput("")
+    if (mode === "interview") setTimerRunning(true)
 
     const userMessage: Message = {
       id: crypto.randomUUID(),
@@ -190,7 +244,49 @@ export default function ChatPage() {
 
   return (
     <div className="chat-main">
-      <MessageList messages={messages} onRegenerateAction={handleRegenerate} className="flex-1 chat-main__list" />
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/70 bg-card/70 px-4 py-3">
+          <div className="flex items-center gap-3 text-sm text-muted-foreground">
+            <span className="uppercase tracking-[0.18em] text-[11px]">Тема</span>
+            <span className="font-semibold text-foreground">{QUESTION.topic}</span>
+            <span className="px-2 py-1 text-[11px] rounded-full border border-border/60">
+              {QUESTION.difficulty}
+            </span>
+          </div>
+          <div className="flex items-center gap-2 text-sm">
+            <button
+              className={`px-3 py-1 text-[12px] rounded-full border ${mode === "practice" ? "border-primary text-primary" : "border-border/60 text-muted-foreground"}`}
+              onClick={() => {
+                setMode("practice")
+                setTimerRunning(false)
+              }}
+            >
+              Practice
+            </button>
+            <button
+              className={`px-3 py-1 text-[12px] rounded-full border ${mode === "interview" ? "border-primary text-primary" : "border-border/60 text-muted-foreground"}`}
+              onClick={() => setMode("interview")}
+            >
+              Interview Sim
+            </button>
+            {mode === "interview" ? (
+              <div className="ml-3 flex items-center gap-2 text-[12px] text-muted-foreground">
+                <span>Таймер</span>
+                <span className="font-mono text-foreground">
+                  {String(Math.floor(secondsLeft / 60)).padStart(2, "0")}:{String(secondsLeft % 60).padStart(2, "0")}
+                </span>
+                <button
+                  className="px-2 py-1 rounded border border-border/60 text-[11px]"
+                  onClick={() => setTimerRunning((v) => !v)}
+                >
+                  {timerRunning ? "Пауза" : "Старт"}
+                </button>
+              </div>
+            ) : null}
+          </div>
+        </div>
+        <MessageList messages={messages} onRegenerateAction={handleRegenerate} className="flex-1 chat-main__list" />
+      </div>
       <ChatInput value={input} onChange={setInput} onSend={handleSend} loading={loading} />
     </div>
   )
