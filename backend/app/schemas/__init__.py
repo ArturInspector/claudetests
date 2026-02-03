@@ -10,6 +10,10 @@ from .session import (
     SessionRead,
     SessionSummary,
 )
+from .socratic import (
+    SocraticAnalyzeRequest,
+    SocraticAnalyzeResponse,
+)
 
 __all__ = [
     "AuthResponse",
@@ -24,5 +28,7 @@ __all__ = [
     "IterationRead",
     "AnswerRequest",
     "AnswerResponse",
+    "SocraticAnalyzeRequest",
+    "SocraticAnalyzeResponse",
 ]
 
