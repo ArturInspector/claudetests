@@ -5,6 +5,7 @@ import json
 import re
 from typing import TypedDict, TYPE_CHECKING
 
+from app.services import prompts
 from app.services.llm.base import LLMClient
 from app.services.rag import RAGService
 
@@ -454,4 +455,97 @@ async def analyze_with_graph(
         mentioned_concepts=all_concepts,
         blind_zones=combined_blind_zones
     )
+
+
+def _detect_misconceptions(answer: str) -> list[dict]:
+    """Простые эвристики заблуждений для CAP/PACELC."""
+    res = []
+    low = answer.lower()
+    if "choose two" in low or "choose 2" in low:
+        res.append({
+            "label": "CAP не про выбор любых двух",
+            "correction": "P считается данностью, выбор между C и A при наличии partition",
+        })
+    if "pacelc" in low and "latenc" not in low and "задерж" not in low:
+        res.append({
+            "label": "PACELC без L-компоненты",
+            "correction": "PACELC добавляет trade-off latency vs consistency даже без partition",
+        })
+    return res
+
+
+async def analyze_answer_socratic(
+    llm: LLMClient,
+    rag: RAGService,
+    graph: "GraphBuilderService",
+    user_id: int,
+    question: str,
+    answer: str,
+    topic: str,
+    session_id: str,
+    required_terms: list[str] | None = None,
+    mode: str = "practice",
+):
+    """Гибридный сократический анализ с деградацией при отсутствии сервисов."""
+    required_terms = required_terms or []
+
+    # 1) Structured
+    criteria = analyze_answer_structured(answer, question, required_terms)
+    base_score = calculate_base_score(criteria)
+
+    # 2) LLM nuance
+    llm_result = await analyze_with_llm(llm, rag, user_id, question, answer, criteria)
+    nuance = llm_result.get("nuance_score", 0.5)
+    understanding = round(base_score * 0.7 + nuance * 0.3, 3)
+    confidence = round(0.4 + nuance * 0.6, 3)
+
+    # 3) Socratic moves
+    context = await rag.similar_context(user_id=user_id, text=question, limit=3)
+    moves_payload = prompts.build_socratic_moves_prompt(question, answer, context)
+    try:
+        moves_resp = await llm.generate(moves_payload)
+        json_match = re.search(r"\{.*\}", moves_resp, re.DOTALL)
+        moves_data = json.loads(json_match.group(0) if json_match else moves_resp)
+        moves = moves_data.get("moves", [])
+        next_step = moves_data.get("next_step")
+    except Exception:
+        moves = [
+            {"type": "probe", "text": "Приведи конкретный инцидент с partition и последствия."},
+            {"type": "challenge", "text": "А если выбрать CP для финтеха — что теряем?"},
+            {"type": "extend", "text": "Сравни CAP и PACELC на примере DynamoDB."},
+        ]
+        next_step = "Уточни trade-off на реальном кейсе и свяжи с PACELC."
+
+    # 4) Misconceptions + difficulty
+    misconceptions = _detect_misconceptions(answer)
+    next_difficulty = "advanced" if understanding > 0.7 else "intermediate" if understanding > 0.4 else "beginner"
+
+    # 5) Graph hints (best-effort)
+    graph_hints: list[dict] = []
+    blind_zones: list[str] | None = None
+    try:
+        user_graph = await graph.get_user_graph(user_id=str(user_id), depth=2)
+        graph_blind = calculate_graph_blind_zones(user_graph, llm_result.get("mentioned_concepts", []))
+        blind_zones = graph_blind
+        if graph_blind:
+            for zone in graph_blind[:3]:
+                graph_hints.append({"concept": zone, "status": "weak"})
+    except Exception:
+        blind_zones = None
+
+    return {
+        "analysis": {
+          "understanding": understanding,
+          "confidence": confidence,
+          "misconceptions": misconceptions,
+          "nextDifficulty": next_difficulty,
+          "gaps": None,
+        },
+        "socratic": {
+            "moves": moves,
+            "next_step": next_step,
+        },
+        "graph": {"hints": graph_hints} if graph_hints else None,
+        "blind_zones": blind_zones,
+    }
 
