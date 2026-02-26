@@ -4,6 +4,8 @@ export type Gap = {
   label: string
   done: boolean
   hint?: string
+  importance?: "критично" | "важно" | "желательно"
+  why?: string
 }
 
 export type Misconception = {
@@ -47,6 +49,8 @@ export type QuestionMeta = {
 export type SocraticMeta = {
   moves: SocraticMove[]
   nextStep?: string
+  selected_question?: string | null
+  selection_rationale?: string | null
 }
 
 export type GraphMeta = {

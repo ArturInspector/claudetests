@@ -46,73 +46,78 @@
   --radius-4xl: calc(var(--radius) + 16px);
 }
 
+/* === Global Dark Theme (Futuristic AI Socratic) === */
 :root {
-  --radius: 0.625rem;
-  --background: #0a0a0a;
+  --radius: 0.75rem;
+
+  /* Deep Dark Backgrounds */
+  --background: #050505;
   --foreground: #fafafa;
-  --card: #0f0f0f;
-  --card-foreground: #f5f5f5;
-  --popover: #0c0c0c;
+  
+  /* Glassmorphism Cards */
+  --card: rgba(255, 255, 255, 0.03);
+  --card-foreground: #ffffff;
+  
+  --popover: #0a0a0a;
   --popover-foreground: #fafafa;
-  --primary: #3b82f6;
-  --primary-foreground: #0b152a;
-  --secondary: #141414;
-  --secondary-foreground: #e5e5e5;
-  --muted: #141414;
-  --muted-foreground: #737373;
-  --accent: #3b82f6;
-  --accent-foreground: #0b152a;
+  
+  /* Neon Accents */
+  --primary: #ff3c00;  /* Electric Orange */
+  --primary-foreground: #ffffff;
+  
+  --secondary: #3b82f6; /* Electric Blue */
+  --secondary-foreground: #ffffff;
+  
+  --muted: rgba(255, 255, 255, 0.05);
+  --muted-foreground: rgba(255, 255, 255, 0.4);
+  
+  --accent: rgba(255, 60, 0, 0.1);
+  --accent-foreground: #ff3c00;
+  
   --destructive: #ef4444;
-  --border: #262626;
-  --input: #262626;
-  --ring: #3b82f6;
-  --chart-1: #3b82f6;
-  --chart-2: #22c55e;
-  --chart-3: #eab308;
-  --chart-4: #38bdf8;
-  --chart-5: #a78bfa;
-  --sidebar: #0f0f0f;
-  --sidebar-foreground: #f5f5f5;
-  --sidebar-primary: #3b82f6;
-  --sidebar-primary-foreground: #0b152a;
-  --sidebar-accent: #1f2937;
-  --sidebar-accent-foreground: #e5e5e5;
-  --sidebar-border: #1f1f1f;
-  --sidebar-ring: #3b82f6;
+  --destructive-foreground: #ffffff;
+  
+  /* Subtle Borders */
+  --border: rgba(255, 255, 255, 0.1);
+  --input: rgba(255, 255, 255, 0.1);
+  --ring: rgba(255, 60, 0, 0.5);
+  
+  --chart-1: #ff3c00;
+  --chart-2: #3b82f6;
+  --chart-3: #10b981;
+  --chart-4: #a855f7;
+  --chart-5: #eab308;
+  
+  --sidebar: #050505;
+  --sidebar-foreground: #fafafa;
+  --sidebar-primary: #ff3c00;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: rgba(255, 255, 255, 0.05);
+  --sidebar-accent-foreground: #fafafa;
+  --sidebar-border: rgba(255, 255, 255, 0.05);
+  --sidebar-ring: #ff3c00;
 }
 
+/* Force Dark Mode - No Light Theme Support */
 .light {
-  --background: #ffffff;
-  --foreground: #0f172a;
-  --card: #ffffff;
-  --card-foreground: #0f172a;
-  --popover: #ffffff;
-  --popover-foreground: #0f172a;
-  --primary: #3b82f6;
-  --primary-foreground: #0b152a;
-  --secondary: #f4f4f5;
-  --secondary-foreground: #0f172a;
-  --muted: #f4f4f5;
-  --muted-foreground: #4b5563;
-  --accent: #e5e7eb;
-  --accent-foreground: #0f172a;
-  --destructive: #b91c1c;
-  --border: #e5e7eb;
-  --input: #e5e7eb;
-  --ring: #3b82f6;
-  --chart-1: #3b82f6;
-  --chart-2: #22c55e;
-  --chart-3: #f97316;
-  --chart-4: #6366f1;
-  --chart-5: #14b8a6;
-  --sidebar: #f8fafc;
-  --sidebar-foreground: #0f172a;
-  --sidebar-primary: #3b82f6;
-  --sidebar-primary-foreground: #0b152a;
-  --sidebar-accent: #e5e7eb;
-  --sidebar-accent-foreground: #0f172a;
-  --sidebar-border: #e5e7eb;
-  --sidebar-ring: #3b82f6;
+  --background: #050505;
+  --foreground: #fafafa;
+  --card: rgba(255, 255, 255, 0.03);
+  --card-foreground: #ffffff;
+  --popover: #0a0a0a;
+  --popover-foreground: #fafafa;
+  --primary: #ff3c00;
+  --primary-foreground: #ffffff;
+  --secondary: #3b82f6;
+  --secondary-foreground: #ffffff;
+  --muted: rgba(255, 255, 255, 0.05);
+  --muted-foreground: rgba(255, 255, 255, 0.4);
+  --accent: rgba(255, 60, 0, 0.1);
+  --accent-foreground: #ff3c00;
+  --destructive: #ef4444;
+  --border: rgba(255, 255, 255, 0.1);
+  --input: rgba(255, 255, 255, 0.1);
+  --ring: rgba(255, 60, 0, 0.5);
 }
 
 @layer base {
@@ -121,5 +126,105 @@
   }
   body {
     @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
   }
+}
+
+/* === Custom Utilities for Glass & Glow === */
+@layer utilities {
+  .glass-panel {
+    @apply bg-white/[0.02] backdrop-blur-xl border border-white/5;
+  }
+  
+  .glow-text {
+    text-shadow: 0 0 20px rgba(255, 60, 0, 0.5);
+  }
+  
+  .glow-border {
+    box-shadow: 0 0 20px rgba(255, 60, 0, 0.1);
+  }
+}
+
+/* === Component Overrides === */
+
+/* Buttons */
+[data-slot="button"] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 40px;
+  padding: 8px 16px;
+  border-radius: 9999px; /* Pill shape */
+  font-size: 0.875rem;
+  font-weight: 600;
+  letter-spacing: 0.025em;
+  border: 1px solid transparent;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  transition: all 200ms ease;
+  cursor: pointer;
+  text-transform: uppercase;
+}
+
+[data-slot="button"]:hover {
+  background: color-mix(in srgb, var(--primary) 85%, white);
+  box-shadow: 0 0 15px rgba(255, 60, 0, 0.4);
+}
+
+[data-slot="button"][data-variant="outline"] {
+  background: transparent;
+  border-color: var(--border);
+  color: var(--foreground);
+}
+
+[data-slot="button"][data-variant="outline"]:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: rgba(255, 60, 0, 0.05);
+  box-shadow: none;
+}
+
+[data-slot="button"][data-variant="ghost"] {
+  background: transparent;
+  color: var(--muted-foreground);
+  border-color: transparent;
+}
+
+[data-slot="button"][data-variant="ghost"]:hover {
+  color: var(--foreground);
+  background: var(--muted);
+  box-shadow: none;
+}
+
+/* Cards */
+[data-slot="card"] {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  backdrop-filter: blur(12px);
+}
+
+/* Badges */
+[data-slot="badge"] {
+  border-radius: 9999px;
+  font-size: 0.7rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  font-weight: 700;
+  padding: 4px 10px;
+}
+
+/* Inputs */
+[data-slot="input"], [data-slot="textarea"] {
+  background: rgba(0, 0, 0, 0.3);
+  border-color: var(--border);
+  color: var(--foreground);
+  border-radius: 12px;
+}
+
+[data-slot="input"]:focus, [data-slot="textarea"]:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 1px var(--primary);
+  background: rgba(0, 0, 0, 0.5);
 }

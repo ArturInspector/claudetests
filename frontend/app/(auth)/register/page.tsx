@@ -1,5 +1,6 @@
 "use client"
 
+import { ArrowRight, Lock, Mail, Terminal } from "lucide-react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import { FormEvent, useState } from "react"
@@ -37,50 +38,69 @@ export default function RegisterPage() {
   }
 
   return (
-    <form className="space-y-4" onSubmit={handleSubmit}>
-      <div className="space-y-1.5">
-        <label className="text-sm text-muted-foreground">Email</label>
-        <Input
-          type="email"
-          placeholder="you@example.com"
-          autoComplete="email"
-          value={email}
-          onChange={(event) => setEmail(event.target.value)}
-          required
-        />
+    <div className="space-y-6">
+      <div className="space-y-2 text-center">
+        <h1 className="text-xl font-bold uppercase tracking-widest text-white">Initialize Profile</h1>
+        <p className="text-xs text-white/40">Create a new identity for cognitive assessment.</p>
       </div>
 
-      <div className="space-y-1.5">
-        <label className="text-sm text-muted-foreground">Password</label>
-        <Input
-          type="password"
-          placeholder="At least 8 characters"
-          autoComplete="new-password"
-          value={password}
-          onChange={(event) => setPassword(event.target.value)}
-          required
-          minLength={8}
-        />
-      </div>
+      <form className="space-y-4" onSubmit={handleSubmit}>
+        <div className="space-y-1.5">
+          <label className="text-[10px] font-bold uppercase tracking-wider text-white/30">Email Identity</label>
+          <div className="relative group">
+            <Mail className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-white/20 transition-colors group-focus-within:text-orange-500" />
+            <Input
+              type="email"
+              placeholder="operator@claudetests.ai"
+              autoComplete="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              required
+              className="pl-10 bg-black/20 border-white/10 text-white placeholder:text-white/10 focus:border-orange-500/50 focus:bg-black/40 h-10 transition-all"
+            />
+          </div>
+        </div>
 
-      {error ? <p className="text-sm text-destructive">{error}</p> : null}
+        <div className="space-y-1.5">
+          <label className="text-[10px] font-bold uppercase tracking-wider text-white/30">Set Passkey</label>
+          <div className="relative group">
+            <Lock className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-white/20 transition-colors group-focus-within:text-orange-500" />
+            <Input
+              type="password"
+              placeholder="At least 8 characters"
+              autoComplete="new-password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              required
+              minLength={8}
+              className="pl-10 bg-black/20 border-white/10 text-white placeholder:text-white/10 focus:border-orange-500/50 focus:bg-black/40 h-10 transition-all"
+            />
+          </div>
+        </div>
 
-      <Button type="submit" className="w-full" disabled={loading}>
-        {loading ? "Creating account..." : "Create account"}
-      </Button>
+        {error && (
+          <div className="flex items-center gap-2 rounded-lg border border-red-500/20 bg-red-500/10 p-3 text-xs text-red-400">
+            <Terminal className="size-3" />
+            {error}
+          </div>
+        )}
 
-      <p className="text-sm text-muted-foreground">
-        Already have an account?{" "}
-        <Link href="/login" className="text-primary underline-offset-4 hover:underline">
-          Sign in
-        </Link>
-      </p>
-    </form>
+        <Button 
+          type="submit" 
+          className="w-full bg-orange-600 hover:bg-orange-500 text-white font-bold uppercase tracking-wider h-10 shadow-[0_0_20px_rgba(234,88,12,0.2)] hover:shadow-[0_0_25px_rgba(234,88,12,0.4)] transition-all" 
+          disabled={loading}
+        >
+          {loading ? "Initializing..." : "Create Account"}
+          {!loading && <ArrowRight className="ml-2 size-3" />}
+        </Button>
+
+        <div className="mt-6 text-center text-xs text-white/30">
+          Already an operator?{" "}
+          <Link href="/login" className="text-orange-500 underline-offset-4 hover:text-orange-400 hover:underline transition-colors">
+            Access system
+          </Link>
+        </div>
+      </form>
+    </div>
   )
 }
-
-
-
-
-
-
