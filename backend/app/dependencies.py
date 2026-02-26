@@ -9,7 +9,7 @@ from app.config import get_settings
 from app.core.security import decode_access_token
 from app.db import get_session
 from app.models import User
-from app.services.graph_builder import GraphBuilderService, NullGraphBuilder
+from app.services.graph import GraphBuilderService, NullGraphBuilder
 from app.services.llm.base import LLMClient, NullLLM
 from app.services.llm.openrouter import OpenRouterLLM
 from app.services.rag import NullRAG, RAGService
@@ -86,7 +86,6 @@ def get_rag_service(
 
 @lru_cache
 def _cached_graph_builder(settings_signature: tuple, llm: LLMClient) -> GraphBuilderService:
-    """Cached graph builder instance."""
     settings = get_settings()
     try:
         builder = GraphBuilderService(
@@ -96,15 +95,30 @@ def _cached_graph_builder(settings_signature: tuple, llm: LLMClient) -> GraphBui
             llm=llm,
         )
         return builder
-    except Exception:  # pragma: no cover
+    except Exception:
         return NullGraphBuilder()
 
 
-def get_graph_builder(
+async def get_graph_builder(
     llm: LLMClient = Depends(get_llm_client),
     settings=Depends(get_settings),
 ) -> GraphBuilderService:
-    """Provide Graph Builder service; falls back to no-op."""
+    import logging
+    log = logging.getLogger(__name__)
+    
     signature = (settings.neo4j_uri, settings.neo4j_user, settings.neo4j_password)
-    return _cached_graph_builder(signature, llm)
+    builder = _cached_graph_builder(signature, llm)
+    
+    if isinstance(builder, NullGraphBuilder):
+        log.warning("Using NullGraphBuilder, graph operations disabled")
+        return builder
+    
+    try:
+        await builder.connect()
+        log.info("GraphBuilderService connected to Neo4j at %s", settings.neo4j_uri)
+    except Exception as exc:
+        log.error("Failed to connect GraphBuilderService to Neo4j: %s", exc)
+        return NullGraphBuilder()
+    
+    return builder
 

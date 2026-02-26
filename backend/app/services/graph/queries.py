@@ -187,3 +187,36 @@ class QueryRepository:
             "weak": 0,
             "average_mastery": 0.0,
         }
+
+    async def get_session_graph(
+        self,
+        session: AsyncSession,
+        session_id: str,
+    ) -> dict[str, Any]:
+        log.info("Fetching session graph for session_id=%s", session_id)
+        result = await session.run(
+            """
+            MATCH (s:Session {session_id: $session_id})<-[:DISCUSSED_IN]-(c:Concept)
+            OPTIONAL MATCH (c)-[r:RELATES_TO*1..2]->(related:Concept)
+            WHERE related IS NULL OR EXISTS {
+                MATCH (related)-[:DISCUSSED_IN]->(s)
+            }
+            RETURN 
+                collect(DISTINCT c) as concepts,
+                collect(DISTINCT r) as relationships
+            """,
+            session_id=session_id,
+        )
+        record = await result.single()
+
+        if not record:
+            log.info("No graph data found for session_id=%s", session_id)
+            return {"concepts": [], "relationships": []}
+
+        concepts_count = len(record["concepts"])
+        log.info("Fetched %d concepts for session_id=%s", concepts_count, session_id)
+
+        return {
+            "concepts": [dict(c) for c in record["concepts"]],
+            "relationships": [dict(r) for r in record["relationships"] if r],
+        }

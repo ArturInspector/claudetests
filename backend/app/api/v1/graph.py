@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db import get_session
 from app.dependencies import get_current_user, get_graph_builder
 from app.models import User
-from app.services.graph_builder import GraphBuilderService
+from app.services.graph import GraphBuilderService
 
 router = APIRouter(prefix="/graph", tags=["graph"])
 
@@ -16,23 +16,16 @@ async def get_user_graph(
     current_user: User = Depends(get_current_user),
     graph: GraphBuilderService = Depends(get_graph_builder),
 ):
-    """
-    Получить knowledge graph пользователя.
+    import logging
+    log = logging.getLogger(__name__)
     
-    Args:
-        depth: Глубина обхода связей (по умолчанию 2)
-        current_user: Текущий пользователь
-        graph: Graph builder сервис
-    
-    Returns:
-        Граф с узлами (concepts) и связями (relationships)
-    """
     user_id = str(current_user.id)
+    log.info("GET /graph for user_id=%s, depth=%d", user_id, depth)
     
     try:
         user_graph = await graph.get_user_graph(user_id=user_id, depth=depth)
         
-        return {
+        response = {
             "user_id": current_user.id,
             "graph": user_graph,
             "stats": {
@@ -41,7 +34,10 @@ async def get_user_graph(
                 "knowledge_edges": len(user_graph.get("knowledge", [])),
             }
         }
+        log.info("Returning graph with %d concepts for user_id=%s", response["stats"]["total_concepts"], user_id)
+        return response
     except Exception as exc:
+        log.error("Failed to fetch graph for user_id=%s: %s", user_id, exc, exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to fetch graph: {str(exc)}"
@@ -193,4 +189,9 @@ async def get_blind_zones(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to calculate blind zones: {str(exc)}"
         )
+
+
+
+
+
 

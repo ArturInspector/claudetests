@@ -87,6 +87,12 @@ class GraphBuilderService:
 
             concepts = []
             async with self._client.session() as session:
+                await self._concept_repo.ensure_session_exists(
+                    session=session,
+                    session_id=session_id,
+                    topic=topic,
+                )
+
                 for concept_data in concepts_data:
                     concept = await self._concept_repo.create_or_update_concept(
                         session=session,
@@ -97,6 +103,13 @@ class GraphBuilderService:
                     )
                     if concept:
                         concepts.append(concept)
+                        concept_id = concept.get("concept_id")
+                        if concept_id:
+                            await self._concept_repo.link_concept_to_session(
+                                session=session,
+                                concept_id=concept_id,
+                                session_id=session_id,
+                            )
 
             log.info(
                 "Extracted %d concepts for user %s in session %s",
@@ -230,3 +243,9 @@ class GraphBuilderService:
                 "weak": 0,
                 "average_mastery": 0.0,
             }
+
+    async def get_session_graph(self, session_id: str) -> dict[str, Any]:
+        if not self._client:
+            raise RuntimeError("Neo4j client not initialized")
+        async with self._client.session() as session:
+            return await self._query_repo.get_session_graph(session, session_id)

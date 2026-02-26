@@ -131,3 +131,49 @@ class ConceptRepository:
             log.error("Failed to create relationship: %s", exc)
 
         return None
+
+    async def ensure_session_exists(
+        self,
+        session: AsyncSession,
+        session_id: str,
+        topic: str,
+    ) -> None:
+        await session.run(
+            """
+            MERGE (s:Session {session_id: $session_id})
+            ON CREATE SET
+                s.topic = $topic,
+                s.created_at = datetime()
+            ON MATCH SET
+                s.topic = $topic
+            """,
+            session_id=session_id,
+            topic=topic,
+        )
+
+    async def link_concept_to_session(
+        self,
+        session: AsyncSession,
+        concept_id: str,
+        session_id: str,
+    ) -> bool:
+        try:
+            await session.run(
+                """
+                MATCH (c:Concept {concept_id: $concept_id})
+                MATCH (s:Session {session_id: $session_id})
+                MERGE (c)-[r:DISCUSSED_IN]->(s)
+                ON CREATE SET r.created_at = datetime()
+                """,
+                concept_id=concept_id,
+                session_id=session_id,
+            )
+            return True
+        except Exception as exc:
+            log.error(
+                "Failed to link concept %s to session %s: %s",
+                concept_id,
+                session_id,
+                exc,
+            )
+            return False
