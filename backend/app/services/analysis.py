@@ -10,7 +10,7 @@ from app.services.llm.base import LLMClient
 from app.services.rag import RAGService
 
 if TYPE_CHECKING:
-    from app.services.graph_builder import GraphBuilderService
+    from app.services.graph import GraphBuilderService
 
 
 class StructuredCriteria(TypedDict):
@@ -194,10 +194,13 @@ def build_llm_analysis_prompt(
   "strengths": ["сильная сторона 1", "сильная сторона 2"],
   "weaknesses": ["слабость 1", "слабость 2"],
   "mentioned_concepts": ["концепт 1", "концепт 2"],
-  "missing_connections": ["что упущено 1", "что упущено 2"]
+  "missing_connections": ["что упущено 1", "что упущено 2"],
+  "misconceptions": [
+    {{"label": "краткое описание заблуждения", "correction": "корректная формулировка"}}
+  ]
 }}
 
-Только JSON, без дополнительного текста."""
+misconceptions — только если в ответе есть фактические ошибки или типичные заблуждения по теме (массив может быть пустым). Только JSON, без дополнительного текста."""
 
 
 async def analyze_with_llm(
@@ -222,9 +225,11 @@ async def analyze_with_llm(
     Returns:
         Словарь с результатами LLM анализа
     """
-    # Получаем контекст из прошлых ответов
-    context = await rag.similar_context(user_id=user_id, text=question, limit=3)
-    
+    try:
+        context = await rag.similar_context(user_id=user_id, text=question, limit=3)
+    except Exception:
+        context = []
+
     # Строим промпт
     prompt = build_llm_analysis_prompt(question, answer, criteria, context)
     
@@ -240,21 +245,28 @@ async def analyze_with_llm(
         else:
             result = json.loads(response)
         
+        misconceptions = result.get('misconceptions') or []
+        if not isinstance(misconceptions, list):
+            misconceptions = []
         return {
             'nuance_score': result.get('nuance_score', 0.5),
             'strengths': result.get('strengths', []),
             'weaknesses': result.get('weaknesses', []),
             'mentioned_concepts': result.get('mentioned_concepts', []),
-            'missing_connections': result.get('missing_connections', [])
+            'missing_connections': result.get('missing_connections', []),
+            'misconceptions': [
+                m if isinstance(m, dict) else {'label': str(m), 'correction': ''}
+                for m in misconceptions
+            ],
         }
     except (json.JSONDecodeError, AttributeError):
-        # Fallback если LLM не вернул валидный JSON
         return {
             'nuance_score': 0.5,
             'strengths': ['Ответ получен'],
             'weaknesses': ['Не удалось детально проанализировать'],
             'mentioned_concepts': extract_mentioned_concepts(answer),
-            'missing_connections': []
+            'missing_connections': [],
+            'misconceptions': [],
         }
 
 
@@ -420,58 +432,35 @@ async def analyze_with_graph(
         llm, rag, int(user_id) if user_id.isdigit() else 0, question, answer, criteria
     )
     
-    # Шаг 3: Извлекаем концепты и обновляем граф
-    extracted_concepts = await graph.extract_concepts(
-        user_id=user_id,
-        question=question,
-        answer=answer,
-        topic=topic,
-        session_id=session_id
-    )
-    
-    # Объединяем концепты из LLM и graph extraction
-    all_concepts = list(set(
-        llm_result['mentioned_concepts'] +
-        [c.get('name', '') for c in extracted_concepts if c.get('name')]
-    ))
-    
-    # Шаг 4: Получаем граф и вычисляем blind zones
-    user_graph = await graph.get_user_graph(user_id=user_id, depth=2)
-    graph_blind_zones = calculate_graph_blind_zones(user_graph, all_concepts)
-    
-    # Комбинируем blind zones из LLM и графа
-    combined_blind_zones = list(set(
-        llm_result['missing_connections'] + graph_blind_zones
-    ))
-    
-    # Финальный score с учётом графа
+    # Шаг 3–4: Граф (best-effort, fallback при ошибке)
+    all_concepts = list(llm_result['mentioned_concepts'])
+    combined_blind_zones = list(llm_result['missing_connections'])
+    try:
+        extracted_concepts = await graph.extract_concepts(
+            user_id=user_id,
+            question=question,
+            answer=answer,
+            topic=topic,
+            session_id=session_id,
+        )
+        all_concepts = list(set(
+            all_concepts + [c.get('name', '') for c in extracted_concepts if c.get('name')]
+        ))
+        user_graph = await graph.get_user_graph(user_id=user_id, depth=2)
+        graph_blind_zones = calculate_graph_blind_zones(user_graph, all_concepts)
+        combined_blind_zones = list(set(combined_blind_zones + graph_blind_zones))
+    except Exception:
+        pass  # Анализ без графа: только LLM blind zones
+
     final_score = base_score * 0.7 + llm_result['nuance_score'] * 0.3
-    
     return AnalysisResult(
         understanding_score=final_score,
         structured_criteria=criteria,
         strengths=llm_result['strengths'],
         weaknesses=llm_result['weaknesses'],
         mentioned_concepts=all_concepts,
-        blind_zones=combined_blind_zones
+        blind_zones=combined_blind_zones,
     )
-
-
-def _detect_misconceptions(answer: str) -> list[dict]:
-    """Простые эвристики заблуждений для CAP/PACELC."""
-    res = []
-    low = answer.lower()
-    if "choose two" in low or "choose 2" in low:
-        res.append({
-            "label": "CAP не про выбор любых двух",
-            "correction": "P считается данностью, выбор между C и A при наличии partition",
-        })
-    if "pacelc" in low and "latenc" not in low and "задерж" not in low:
-        res.append({
-            "label": "PACELC без L-компоненты",
-            "correction": "PACELC добавляет trade-off latency vs consistency даже без partition",
-        })
-    return res
 
 
 async def analyze_answer_socratic(
@@ -485,13 +474,46 @@ async def analyze_answer_socratic(
     session_id: str,
     required_terms: list[str] | None = None,
     mode: str = "practice",
+    dialogue_history: list[dict] | None = None,
+    prior_gaps: list[dict] | None = None,
 ):
-    """Гибридный сократический анализ с деградацией при отсутствии сервисов."""
+    """Гибридный сократический анализ с учётом контекста диалога и ранее выявленных пробелов."""
     required_terms = required_terms or []
+    dialogue_history = dialogue_history or []
+    prior_gaps = prior_gaps or []
 
     # 1) Structured
     criteria = analyze_answer_structured(answer, question, required_terms)
     base_score = calculate_base_score(criteria)
+    gaps_list: list[dict] = []
+    if not criteria["mentions_key_terms"]:
+        gaps_list.append({
+            "label": "Не упомянуты ключевые термины",
+            "hint": "Перечисли основные понятия темы с кратким определением каждого (1-2 предложения)",
+            "importance": "критично",
+            "why": "Без базовой терминологии невозможно обсуждать детали и trade-offs"
+        })
+    if not criteria["explains_tradeoffs"]:
+        gaps_list.append({
+            "label": "Нет анализа trade-off",
+            "hint": "Опиши pros AND cons выбора, приведи сценарий когда X лучше Y (2-3 предложения)",
+            "importance": "критично",
+            "why": "В реальных системах всё решается через trade-offs: нет серебряной пули"
+        })
+    if not criteria["has_examples"]:
+        gaps_list.append({
+            "label": "Нет конкретных примеров",
+            "hint": "Приведи пример из реального проекта или известной системы (AWS, GitHub, Netflix и т.д.)",
+            "importance": "важно",
+            "why": "Примеры показывают применение концепции в production, а не просто теорию"
+        })
+    if not criteria["uses_technical_depth"]:
+        gaps_list.append({
+            "label": "Низкая техническая глубина",
+            "hint": "Добавь конкретные метрики (latency ms, throughput req/s, availability %) или алгоритмы",
+            "importance": "важно",
+            "why": "Глубина понимания видна через детали: числа, алгоритмы, ограничения систем"
+        })
 
     # 2) LLM nuance
     llm_result = await analyze_with_llm(llm, rag, user_id, question, answer, criteria)
@@ -499,26 +521,72 @@ async def analyze_answer_socratic(
     understanding = round(base_score * 0.7 + nuance * 0.3, 3)
     confidence = round(0.4 + nuance * 0.6, 3)
 
-    # 3) Socratic moves
-    context = await rag.similar_context(user_id=user_id, text=question, limit=3)
-    moves_payload = prompts.build_socratic_moves_prompt(question, answer, context)
+    # 3) Socratic moves — RAG context with fallback
+    try:
+        context = await rag.similar_context(user_id=user_id, text=question, limit=3)
+    except Exception:
+        context = []
+
+    # Misconceptions from LLM (topic-agnostic)
+    misconceptions_from_llm = llm_result.get("misconceptions") or []
+    misconceptions_labels = [m.get("label", "") for m in misconceptions_from_llm if isinstance(m, dict)]
+    
+    moves_payload = prompts.build_socratic_moves_prompt(
+        question=question,
+        answer=answer,
+        context=context,
+        goal=None,
+        understanding=understanding,
+        confidence=confidence,
+        gaps=gaps_list,
+        misconceptions=misconceptions_labels,
+        dialogue_history=dialogue_history,
+        prior_gaps=prior_gaps,
+    )
     try:
         moves_resp = await llm.generate(moves_payload)
         json_match = re.search(r"\{.*\}", moves_resp, re.DOTALL)
         moves_data = json.loads(json_match.group(0) if json_match else moves_resp)
         moves = moves_data.get("moves", [])
         next_step = moves_data.get("next_step")
+        selected_question = moves_data.get("selected_question")
+        selection_rationale = moves_data.get("selection_rationale")
     except Exception:
         moves = [
-            {"type": "probe", "text": "Приведи конкретный инцидент с partition и последствия."},
-            {"type": "challenge", "text": "А если выбрать CP для финтеха — что теряем?"},
-            {"type": "extend", "text": "Сравни CAP и PACELC на примере DynamoDB."},
+            {"type": "probe", "text": "Уточни свой ответ: приведи пример или разверни мысль."},
+            {"type": "extend", "text": "Что будет, если применить это в реальной системе? Опиши trade-offs."},
         ]
-        next_step = "Уточни trade-off на реальном кейсе и свяжи с PACELC."
+        next_step = "Уточни ответ или приведи пример — тогда задам следующий вопрос."
+        selected_question = moves[0]["text"] if moves else "Уточни свой ответ."
+        selection_rationale = "LLM недоступен, выбран базовый наводящий вопрос."
 
-    # 4) Misconceptions + difficulty
-    misconceptions = _detect_misconceptions(answer)
+    # 4) Misconceptions from LLM + difficulty
+    misconceptions = misconceptions_from_llm
     next_difficulty = "advanced" if understanding > 0.7 else "intermediate" if understanding > 0.4 else "beginner"
+
+    # 4.1) Локальный выбор вопроса, если LLM не вернул selected_question
+    def _pick_fallback_question() -> tuple[str, str]:
+        if understanding < 0.5:
+            for mv in moves:
+                if mv.get("type") == "simplify":
+                    return mv.get("text", ""), "Понимание <50%, упрощаем."
+            for mv in moves:
+                if mv.get("type") == "probe":
+                    return mv.get("text", ""), "Понимание <50%, уточняем через probe."
+        if misconceptions:
+            for mv in moves:
+                if mv.get("type") == "challenge":
+                    return mv.get("text", ""), "Есть заблуждения, задаём challenge."
+        if gaps_list:
+            for mv in moves:
+                if mv.get("type") == "probe":
+                    return mv.get("text", ""), "Есть пробелы, уточняем через probe."
+        if moves:
+            return moves[0].get("text", ""), "Берём первый сгенерированный ход."
+        return "Уточни ключевой trade-off для своей системы.", "Нет ходов, fallback."
+
+    if not selected_question:
+        selected_question, selection_rationale = _pick_fallback_question()
 
     # 5) Graph hints (best-effort)
     graph_hints: list[dict] = []
@@ -533,17 +601,31 @@ async def analyze_answer_socratic(
     except Exception:
         blind_zones = None
 
+    # Конвертируем gaps для фронтенда (добавляем done=false для всех)
+    gaps_for_frontend = [
+        {
+            "label": gap["label"],
+            "hint": gap["hint"],
+            "importance": gap["importance"],
+            "why": gap["why"],
+            "done": False
+        }
+        for gap in gaps_list
+    ]
+
     return {
         "analysis": {
           "understanding": understanding,
           "confidence": confidence,
           "misconceptions": misconceptions,
           "nextDifficulty": next_difficulty,
-          "gaps": None,
+          "gaps": gaps_for_frontend,
         },
         "socratic": {
             "moves": moves,
             "next_step": next_step,
+            "selected_question": selected_question,
+            "selection_rationale": selection_rationale,
         },
         "graph": {"hints": graph_hints} if graph_hints else None,
         "blind_zones": blind_zones,
