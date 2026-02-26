@@ -2,12 +2,13 @@
 
 import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
-import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { NodeDetailsPanel } from "./node-details-panel";
 import { BlindZonesOverlay } from "./blind-zones-overlay";
+import { useAuthStore } from "@/stores/auth";
+import { Maximize2, ZoomIn } from "lucide-react";
 
-// Динамический импорт для избежания SSR проблем с Three.js
+// Dynamic import to avoid SSR issues with Three.js
 const ForceGraph3D = dynamic(() => import("react-force-graph-3d"), {
   ssr: false,
 });
@@ -47,10 +48,15 @@ export function GraphViewer() {
   const fetchGraphData = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem("token");
+      const token =
+        useAuthStore.getState().token ||
+        (typeof window !== "undefined" ? localStorage.getItem("access_token") : null) ||
+        (typeof document !== "undefined"
+          ? document.cookie.match(/(?:^|; )access_token=([^;]+)/)?.[1]
+          : null);
       
       if (!token) {
-        setError("Не авторизован");
+        setError("Authorization required");
         setLoading(false);
         return;
       }
@@ -67,7 +73,6 @@ export function GraphViewer() {
 
       const data = await response.json();
       
-      // Преобразуем данные из Neo4j в формат для react-force-graph
       const nodes: GraphNode[] = data.graph.concepts.map((concept: any) => ({
         id: concept.concept_id || concept.name,
         name: concept.name,
@@ -92,21 +97,18 @@ export function GraphViewer() {
     }
   };
 
-  // Цвет узла на основе mastery level
   const getNodeColor = (node: GraphNode) => {
     const mastery = node.mastery_level || 0;
     
-    if (mastery >= 0.7) return "#22c55e"; // Зелёный - освоено
-    if (mastery >= 0.4) return "#eab308"; // Жёлтый - частично
-    return "#94a3b8"; // Серый - не освоено
+    if (mastery >= 0.7) return "#10b981"; // Emerald/Green (Mastered)
+    if (mastery >= 0.4) return "#ff3c00"; // Orange (In Progress)
+    return "#3b82f6"; // Blue (New/Unexplored)
   };
 
-  // Размер узла на основе times_reviewed
   const getNodeSize = (node: GraphNode) => {
     const reviews = node.times_reviewed || 0;
     const baseSize = Math.max(4, Math.min(12, 4 + reviews * 1.5));
     
-    // Увеличиваем размер для выбранного узла
     if (selectedNode && node.id === selectedNode.id) {
       return baseSize * 1.5;
     }
@@ -114,80 +116,58 @@ export function GraphViewer() {
     return baseSize;
   };
 
-  // Обработчик клика по узлу
   const handleNodeClick = (node: any) => {
     setSelectedNode(node as GraphNode);
     
-    // Центрируем камеру на узле
     if (fgRef.current) {
-      const distance = 200;
+      const distance = 150;
       const distRatio = 1 + distance / Math.hypot(node.x, node.y, node.z);
       
       fgRef.current.cameraPosition(
         { x: node.x * distRatio, y: node.y * distRatio, z: node.z * distRatio },
         node,
-        1000
+        1500
       );
     }
   };
 
-  // Обработчик hover
   const handleNodeHover = (node: any) => {
     setHoveredNode(node as GraphNode | null);
-    
-    // Меняем курсор
     if (typeof document !== "undefined") {
       document.body.style.cursor = node ? "pointer" : "default";
     }
   };
 
-  // Подсветка связанных узлов
-  const getNodeOpacity = (node: GraphNode) => {
-    if (!selectedNode) return 1;
-    
-    // Выбранный узел всегда яркий
-    if (node.id === selectedNode.id) return 1;
-    
-    // Связанные узлы
-    const isConnected = graphData.links.some(
-      (link) =>
-        (link.source === selectedNode.id && link.target === node.id) ||
-        (link.target === selectedNode.id && link.source === node.id)
-    );
-    
-    return isConnected ? 1 : 0.3;
-  };
-
   if (loading) {
     return (
-      <Card className="h-full flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4" />
-          <p className="text-muted-foreground">Загрузка графа знаний...</p>
+      <div className="h-full flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-500 mx-auto" />
+          <p className="text-white/50 text-xs font-bold uppercase tracking-widest">Constructing Neural Map...</p>
         </div>
-      </Card>
+      </div>
     );
   }
 
   if (error) {
     return (
-      <Card className="h-full flex items-center justify-center">
-        <div className="text-center text-destructive">
-          <p className="font-semibold mb-2">Ошибка загрузки</p>
-          <p className="text-sm">{error}</p>
+      <div className="h-full flex items-center justify-center">
+        <div className="text-center text-red-400">
+          <p className="font-bold uppercase tracking-wider mb-2">Connection Failure</p>
+          <p className="text-sm opacity-70">{error}</p>
         </div>
-      </Card>
+      </div>
     );
   }
 
   if (graphData.nodes.length === 0) {
     return (
-      <Card className="h-full flex items-center justify-center">
-        <div className="text-center text-muted-foreground">
-          <p className="font-semibold mb-2">Граф знаний пуст</p>
-          <p className="text-sm">Начните сессию чтобы построить карту знаний</p>
+      <div className="h-full flex items-center justify-center">
+        <div className="text-center text-white/40">
+          <p className="font-bold uppercase tracking-wider mb-2">Neural Network Empty</p>
+          <p className="text-sm">Initiate sessions to populate cognitive graph.</p>
         </div>
-      </Card>
+      </div>
     );
   }
 
@@ -201,63 +181,66 @@ export function GraphViewer() {
 
   return (
     <>
-      <Card className="h-full relative overflow-hidden">
-        {/* Кнопка Blind Zones */}
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10">
-          <Button
+      <div className="h-full relative overflow-hidden">
+        {/* Blind Zones Trigger */}
+        <div className="absolute top-6 left-1/2 -translate-x-1/2 z-10">
+          <button
             onClick={() => setShowBlindZones(true)}
-            variant="default"
-            size="sm"
-            className="shadow-lg"
+            className="group flex items-center gap-2 rounded-full border border-white/10 bg-black/40 px-4 py-2 text-xs font-bold uppercase tracking-wider text-white backdrop-blur-md transition-all hover:bg-white/10 hover:border-orange-500/50"
           >
-            🔍 Показать Blind Zones
-          </Button>
+            <ZoomIn className="size-3 text-orange-500" />
+            Scan Blind Zones
+          </button>
         </div>
 
         <ForceGraph3D
-        ref={fgRef}
-        graphData={graphData}
-        nodeLabel={(node: any) => `${node.name} (mastery: ${(node.mastery_level * 100).toFixed(0)}%)`}
-        nodeColor={getNodeColor}
-        nodeVal={getNodeSize}
-        nodeOpacity={getNodeOpacity}
-        onNodeClick={handleNodeClick}
-        onNodeHover={handleNodeHover}
-        linkDirectionalParticles={2}
-        linkDirectionalParticleSpeed={0.005}
-        backgroundColor="#0a0a0a"
-        showNavInfo={false}
-      />
+          ref={fgRef}
+          graphData={graphData}
+          nodeLabel={(node: any) => `${node.name} (${(node.mastery_level * 100).toFixed(0)}%)`}
+          nodeColor={getNodeColor}
+          nodeVal={getNodeSize}
+          onNodeClick={handleNodeClick}
+          onNodeHover={handleNodeHover}
+          linkDirectionalParticles={2}
+          linkDirectionalParticleSpeed={0.005}
+          linkWidth={1}
+          linkOpacity={0.3}
+          backgroundColor="rgba(0,0,0,0)" // Transparent to show page background
+          showNavInfo={false}
+          linkColor={() => "#ffffff33"}
+        />
       
-      {/* Легенда */}
-      <div className="absolute top-4 right-4 bg-card/90 backdrop-blur-sm border rounded-lg p-4 space-y-2">
-        <p className="text-sm font-semibold mb-2">Легенда</p>
-        <div className="flex items-center gap-2 text-xs">
-          <div className="w-3 h-3 rounded-full bg-[#22c55e]" />
-          <span>Освоено (≥70%)</span>
-        </div>
-        <div className="flex items-center gap-2 text-xs">
-          <div className="w-3 h-3 rounded-full bg-[#eab308]" />
-          <span>Частично (40-70%)</span>
-        </div>
-        <div className="flex items-center gap-2 text-xs">
-          <div className="w-3 h-3 rounded-full bg-[#94a3b8]" />
-          <span>Не освоено (&lt;40%)</span>
-        </div>
-      </div>
-
-      {/* Статистика */}
-      <div className="absolute bottom-4 left-4 bg-card/90 backdrop-blur-sm border rounded-lg p-4">
-        <p className="text-sm font-semibold mb-2">Статистика</p>
-        <div className="space-y-1 text-xs">
-          <p>Концептов: {graphData.nodes.length}</p>
-          <p>Связей: {graphData.links.length}</p>
+      {/* Legend */}
+      <div className="absolute top-6 right-6 rounded-xl border border-white/5 bg-black/40 p-4 backdrop-blur-md">
+        <p className="text-[10px] font-bold uppercase tracking-widest text-white/30 mb-3">Synaptic Strength</p>
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 text-xs text-white/70">
+            <div className="size-2 rounded-full bg-[#10b981] shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
+            <span>Mastered (≥70%)</span>
+          </div>
+          <div className="flex items-center gap-2 text-xs text-white/70">
+            <div className="size-2 rounded-full bg-[#ff3c00] shadow-[0_0_8px_rgba(255,60,0,0.5)]" />
+            <span>Developing (40-70%)</span>
+          </div>
+          <div className="flex items-center gap-2 text-xs text-white/70">
+            <div className="size-2 rounded-full bg-[#3b82f6] shadow-[0_0_8px_rgba(59,130,246,0.5)]" />
+            <span>Unexplored (&lt;40%)</span>
+          </div>
         </div>
       </div>
 
-      {/* Детальная панель выбранного узла */}
+      {/* Stats */}
+      <div className="absolute bottom-6 left-6 rounded-xl border border-white/5 bg-black/40 p-4 backdrop-blur-md">
+        <p className="text-[10px] font-bold uppercase tracking-widest text-white/30 mb-3">Network Metrics</p>
+        <div className="space-y-1 text-xs text-white/70 font-mono">
+          <p>Nodes: {graphData.nodes.length}</p>
+          <p>Links: {graphData.links.length}</p>
+        </div>
+      </div>
+
+      {/* Selected Node Details */}
       {selectedNode && (
-        <div className="absolute top-4 left-4 max-w-md">
+        <div className="absolute top-20 left-6 max-w-sm z-20">
           <NodeDetailsPanel
             node={selectedNode}
             onClose={() => setSelectedNode(null)}
@@ -273,14 +256,14 @@ export function GraphViewer() {
 
       {/* Hover tooltip */}
       {hoveredNode && !selectedNode && (
-        <div className="absolute top-4 left-4 bg-card/90 backdrop-blur-sm border rounded-lg p-3 pointer-events-none">
-          <p className="font-semibold text-sm">{hoveredNode.name}</p>
-          <p className="text-xs text-muted-foreground">
-            Кликните для деталей
+        <div className="absolute top-24 left-6 pointer-events-none rounded-lg border border-white/10 bg-black/80 px-3 py-2 backdrop-blur-md">
+          <p className="font-bold text-sm text-white">{hoveredNode.name}</p>
+          <p className="text-[10px] uppercase tracking-wider text-orange-500">
+            Click to analyze
           </p>
         </div>
       )}
-      </Card>
+      </div>
 
       {/* Blind Zones Overlay */}
       <BlindZonesOverlay
@@ -291,4 +274,3 @@ export function GraphViewer() {
     </>
   );
 }
-

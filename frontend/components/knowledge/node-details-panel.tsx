@@ -206,3 +206,8 @@ export function NodeDetailsPanel({ node, onClose, onNodeSelect }: NodeDetailsPan
   );
 }
 
+
+
+
+
+

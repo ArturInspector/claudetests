@@ -1,5 +1,7 @@
 "use client"
 
+import { useState } from "react"
+
 import type { Message } from "@/types/chat"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -40,6 +42,8 @@ export function ChatMessage({ message, onRegenerateAction }: Props) {
   const hasGraphHints = Boolean(metadata?.graph?.hints?.length)
   const understanding = Math.round((metadata?.analysis?.understanding ?? 0) * 100)
   const confidence = Math.round((metadata?.analysis?.confidence ?? 0) * 100)
+  const hasDetails = hasAnalysis || hasSocratic || hasGraphHints
+  const [showDetails, setShowDetails] = useState(false)
 
   return (
     <div className={cn("chat-message", isUser && "user")}>
@@ -77,7 +81,20 @@ export function ChatMessage({ message, onRegenerateAction }: Props) {
             <p className="chat-message__text">{message.content}</p>
           )}
 
-          {hasAnalysis && metadata?.analysis ? (
+          {hasDetails ? (
+            <div className="mt-3">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-xs px-2 py-1"
+                onClick={() => setShowDetails((v) => !v)}
+              >
+                {showDetails ? "Hide analysis" : "Show analysis"}
+              </Button>
+            </div>
+          ) : null}
+
+          {showDetails && hasAnalysis && metadata?.analysis ? (
             <div className="chat-analysis">
               <div className="chat-analysis__header">
                 <span>Understanding</span>
@@ -103,8 +120,30 @@ export function ChatMessage({ message, onRegenerateAction }: Props) {
                         {gap.done ? "✓" : "•"}
                       </span>
                       <div className="flex-1">
-                        <div className="text-foreground/90">{gap.label}</div>
-                        {!gap.done && gap.hint ? <div className="hint">{gap.hint}</div> : null}
+                        <div className="flex items-center gap-2">
+                          <div className="text-foreground/90">{gap.label}</div>
+                          {gap.importance ? (
+                            <Badge
+                              variant="outline"
+                              className={cn(
+                                "text-[10px] px-1.5 py-0",
+                                gap.importance === "критично" && "border-red-500/50 text-red-400",
+                                gap.importance === "важно" && "border-yellow-500/50 text-yellow-400",
+                                gap.importance === "желательно" && "border-gray-500/50 text-gray-400"
+                              )}
+                            >
+                              {gap.importance}
+                            </Badge>
+                          ) : null}
+                        </div>
+                        {!gap.done && gap.hint ? (
+                          <div className="hint mt-1">{gap.hint}</div>
+                        ) : null}
+                        {!gap.done && gap.why ? (
+                          <div className="text-xs text-muted-foreground/70 mt-1.5 italic">
+                            💡 {gap.why}
+                          </div>
+                        ) : null}
                       </div>
                     </div>
                   ))}
@@ -151,7 +190,7 @@ export function ChatMessage({ message, onRegenerateAction }: Props) {
             </div>
           ) : null}
 
-          {hasSocratic && metadata?.socratic?.moves ? (
+          {showDetails && hasSocratic && metadata?.socratic?.moves ? (
             <div className="chat-analysis chat-analysis--secondary">
               <div className="chat-analysis__title">Socratic moves</div>
               <div className="space-y-2">
@@ -178,7 +217,7 @@ export function ChatMessage({ message, onRegenerateAction }: Props) {
             </div>
           ) : null}
 
-          {hasGraphHints && metadata?.graph?.hints ? (
+          {showDetails && hasGraphHints && metadata?.graph?.hints ? (
             <div className="chat-analysis chat-analysis--secondary">
               <div className="chat-analysis__title">Knowledge Graph</div>
               <div className="flex flex-wrap gap-2">
