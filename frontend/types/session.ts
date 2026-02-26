@@ -9,9 +9,11 @@ export type Session = {
 
 export type SessionSummary = Session & {
   iteration_count: number
+  message_count?: number
 }
 
-export type Message = {
+/** One iteration (legacy: question/answer/feedback from sessions API) */
+export type IterationMessage = {
   id: number
   number: number
   question: string
@@ -20,8 +22,20 @@ export type Message = {
   created_at: string
 }
 
+/** One chat message from DB (role, content, analysis_json) — full dialogue with analysis */
+export type SessionMessage = {
+  id: string
+  session_id: number
+  role: "user" | "assistant"
+  content: string
+  analysis_json?: Record<string, unknown> | null
+  timestamp: string
+}
+
 export type SessionDetail = Session & {
-  iterations: Message[]
+  iterations: IterationMessage[]
+  /** Dialogue history with analysis (gaps, socratic moves). Prefer this for restore when present. */
+  messages?: SessionMessage[]
 }
 
 export type SessionCreatePayload = {
@@ -35,6 +49,6 @@ export type AnswerRequest = {
 }
 
 export type AnswerResponse = {
-  iteration: Message
+  iteration: IterationMessage
   similar_context: string[]
 }

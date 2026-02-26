@@ -1,7 +1,9 @@
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.dependencies import get_current_user, get_llm_client, get_rag_service
+from app.dependencies import get_current_user, get_graph_builder, get_llm_client, get_rag_service
 from app.db import get_session
 from app.models import Session, User
 from app.schemas.session import (
@@ -14,6 +16,7 @@ from app.schemas.session import (
     SessionSummary,
 )
 from app.services import prompts
+from app.services.graph import GraphBuilderService
 from app.services.llm.base import LLMClient
 from app.services.rag import RAGService
 from app.services.session import (
@@ -56,7 +59,11 @@ async def list_user_sessions(
     sessions = await list_sessions(db, user_id=current_user.id)
     return [
         SessionSummary.model_validate(
-            {**SessionRead.model_validate(s).model_dump(), "iteration_count": len(s.iterations)}
+            {
+                **SessionRead.model_validate(s).model_dump(),
+                "iteration_count": len(s.iterations),
+                "message_count": len(s.messages) if hasattr(s, 'messages') else 0,
+            }
         )
         for s in sessions
     ]
@@ -68,8 +75,11 @@ async def get_session_detail(
     db: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ):
-    """Return session with iterations."""
+    """Return session with iterations and messages (dialogue history with analysis)."""
     session_obj = await _get_session_or_404(db, current_user.id, session_id)
+    # Ensure messages are ordered by time for consistent restore
+    if getattr(session_obj, "messages", None):
+        session_obj.messages.sort(key=lambda m: m.timestamp or datetime.min)
     return SessionDetail.model_validate(session_obj)
 
 
@@ -125,4 +135,39 @@ async def remove_session(
     await delete_session(db, session_obj=session_obj)
     rag.delete_session(user_id=current_user.id, session_id=session_id)
     return None
+
+
+@router.post("/{session_id}/close", response_model=SessionRead)
+async def close_session(
+    session_id: int,
+    db: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+):
+    """Mark a session as closed."""
+    session_obj = await _get_session_or_404(db, current_user.id, session_id)
+    session_obj.closed_at = datetime.utcnow()
+    session_obj.status = "closed"
+    await db.commit()
+    await db.refresh(session_obj)
+    return SessionRead.model_validate(session_obj)
+
+
+@router.get("/{session_id}/graph")
+async def get_session_knowledge_graph(
+    session_id: int,
+    db: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+    graph: GraphBuilderService = Depends(get_graph_builder),
+):
+    """Get the knowledge graph for a specific session."""
+    await _get_session_or_404(db, current_user.id, session_id)
+    
+    try:
+        session_graph = await graph.get_session_graph(session_id=str(session_id))
+        return session_graph
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch session graph: {str(exc)}",
+        )
 

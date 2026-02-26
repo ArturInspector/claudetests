@@ -92,7 +92,7 @@ async def list_sessions(db: AsyncSession, *, user_id: int) -> list[Session]:
     result = await db.execute(
         select(Session)
         .where(Session.user_id == user_id)
-        .options(selectinload(Session.iterations))
+        .options(selectinload(Session.iterations), selectinload(Session.messages))
         .order_by(Session.created_at.desc())
     )
     return list(result.scalars().all())
@@ -104,7 +104,7 @@ async def get_session_with_iterations(
     return await db.scalar(
         select(Session)
         .where(Session.id == session_id, Session.user_id == user_id)
-        .options(selectinload(Session.iterations))
+        .options(selectinload(Session.iterations), selectinload(Session.messages))
     )
 
 
