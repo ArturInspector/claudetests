@@ -8,7 +8,7 @@ class SocraticAnalyzeRequest(BaseModel):
     answer: str = Field(min_length=3)
     topic: str | None = Field(default=None, min_length=2, max_length=255)
     mode: str | None = Field(default="practice", pattern="^(practice|interview)$")
-    session_id: int | None = None
+    session_id: str | None = None
     required_terms: list[str] | None = None
 
 
@@ -29,6 +29,8 @@ class GraphHint(BaseModel):
 class SocraticBlock(BaseModel):
     moves: list[SocraticMove] = []
     next_step: str | None = None
+    selected_question: str | None = None
+    selection_rationale: str | None = None
 
 
 class AnalysisBlock(BaseModel):
