@@ -72,13 +72,6 @@ export const login = async (payload: {
   email: string
   password: string
 }) => {
-  if (payload.email === "admin@gmail.com" && payload.password === "admin") {
-    const token = "admin-mock-token"
-    const user: AuthUser = { id: 1, email: "admin@gmail.com" }
-    persistToken(token)
-    return { token, user }
-  }
-
   const res = await fetch(`${API_BASE}/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
