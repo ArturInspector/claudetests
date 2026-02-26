@@ -72,5 +72,24 @@ export type Message = {
   metadata?: MessageMetadata
 }
 
+/** Response from POST /api/v1/socratic/analyze */
+export type SocraticAnalyzeResponse = {
+  analysis: {
+    understanding: number
+    confidence?: number
+    misconceptions?: Misconception[]
+    nextDifficulty?: string
+    gaps?: Gap[]
+  }
+  socratic: {
+    moves: SocraticMove[]
+    next_step?: string | null
+    selected_question?: string | null
+    selection_rationale?: string | null
+  }
+  graph?: { hints?: KnowledgeHint[] } | null
+  blind_zones?: string[] | null
+}
+
 
 

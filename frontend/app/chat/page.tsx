@@ -14,6 +14,7 @@ import {
   Lightbulb,
   LogOut,
   MessageSquare,
+  Network,
   Send,
   Sparkles,
   Terminal,
@@ -25,18 +26,13 @@ import { useEffect, useMemo, useRef, useState } from "react"
 
 import { createSession, fetchSessionMessages } from "@/lib/sessions"
 import { useAuthStore } from "@/stores/auth"
-import type { Gap, KnowledgeHint, Message, SocraticMove } from "@/types/chat"
+import type { Gap, KnowledgeHint, Message, SocraticAnalyzeResponse, SocraticMove } from "@/types/chat"
 import type { SessionDetail } from "@/types/session"
 
 // --- Types & Constants ---
 
-const QUESTION = {
-  title: "What is partition tolerance in the CAP theorem?",
-  prompt:
-    "Explain how partition tolerance influences consistency and availability trade-offs. Include one example from a real-world system.",
-  difficulty: "Intermediate" as const,
-  topic: "Distributed systems",
-}
+const STARTER_PROMPT =
+  "What do you want to learn? Type a topic or a question in your own words — I'll start the dialogue from there."
 
 type Mode = "practice" | "interview"
 
@@ -68,6 +64,15 @@ const GlassPanel = ({ children, className = "", hover = false }: { children: Rea
     {children}
   </div>
 )
+
+/** Renders time only after mount to avoid server/client timezone hydration mismatch */
+function ClientTime({ value, className }: { value: Date; className?: string }) {
+  const [time, setTime] = useState<string | null>(null)
+  useEffect(() => {
+    setTime(value.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }))
+  }, [value])
+  return <span className={className}>{time ?? "—"}</span>
+}
 
 const ProgressBar = ({ label, value, color = "bg-blue-500" }: { label: string; value: number; color?: string }) => (
   <div className="group space-y-1.5">
@@ -104,25 +109,18 @@ export default function ChatPage() {
   const [loadingSession, setLoadingSession] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
 
-  const initialQuestionMessage = useMemo<Message>(
+  const starterMessage = useMemo<Message>(
     () => ({
-      id: "question-1",
+      id: "starter",
       role: "assistant",
-      content: QUESTION.prompt,
+      content: STARTER_PROMPT,
       timestamp: new Date(),
-      metadata: {
-        question: {
-          title: QUESTION.title,
-          difficulty: QUESTION.difficulty,
-          topic: QUESTION.topic,
-          prompt: QUESTION.prompt,
-        },
-      },
+      metadata: {},
     }),
     []
   )
 
-  const [messages, setMessages] = useState<Message[]>([initialQuestionMessage])
+  const [messages, setMessages] = useState<Message[]>([starterMessage])
   const scrollRef = useRef<HTMLDivElement>(null)
 
   // --- Logic from original file ---
@@ -136,17 +134,39 @@ export default function ChatPage() {
         const detail = await fetchSessionMessages(sessionId)
         setSessionDetail(detail)
 
-        if (detail.iterations.length > 0) {
-          const loadedMessages: Message[] = [initialQuestionMessage]
+        const loadedMessages: Message[] = []
 
-          detail.iterations.forEach((iter) => {
+        if (detail.messages && detail.messages.length > 0) {
+          detail.messages.forEach((msg) => {
+            loadedMessages.push({
+              id: String(msg.id),
+              role: msg.role,
+              content: msg.content,
+              timestamp: new Date(msg.timestamp),
+              metadata: msg.role === "assistant" && msg.analysis_json ? (msg.analysis_json as Message["metadata"]) : undefined,
+            })
+          })
+          setMessages(loadedMessages)
+          return
+        }
+
+        // Fallback: restore from iterations (question/answer/feedback only)
+        if (detail.iterations.length > 0) {
+          detail.iterations.forEach((iter, idx) => {
+            if (idx === 0) {
+              loadedMessages.push({
+                id: `assistant-${iter.id}-q`,
+                role: "assistant",
+                content: iter.question,
+                timestamp: new Date(iter.created_at),
+              })
+            }
             loadedMessages.push({
               id: `user-${iter.id}`,
               role: "user",
               content: iter.answer,
               timestamp: new Date(iter.created_at),
             })
-
             if (iter.feedback) {
               loadedMessages.push({
                 id: `assistant-${iter.id}`,
@@ -156,7 +176,6 @@ export default function ChatPage() {
               })
             }
           })
-
           setMessages(loadedMessages)
         }
       } catch (err) {
@@ -167,7 +186,7 @@ export default function ChatPage() {
     }
 
     loadSession()
-  }, [sessionId, initialQuestionMessage])
+  }, [sessionId, starterMessage])
 
   useEffect(() => {
     if (!timerRunning) return
@@ -184,84 +203,36 @@ export default function ChatPage() {
   }, [timerRunning])
 
   const evaluateAnswer = (answer: string) => {
-    const normalized = answer.toLowerCase()
-    const hasPartition = normalized.includes("partition")
-    const hasTradeoff = normalized.includes("trade-off") || normalized.includes("tradeoff") || normalized.includes("однако")
-    const hasExample = normalized.includes("например") || normalized.includes("e.g.") || normalized.includes("dynamo") || normalized.includes("mongo")
-    const hasNumbers = /\d+/.test(answer)
+    // First turn: user declares topic — no topic-specific heuristics
+    const firstTurn = messages.filter((m) => m.role === "user").length === 0
+    if (firstTurn) {
+      return {
+        understanding: 0.5,
+        confidence: 0.5,
+        gaps: [] as Gap[],
+        notes: "",
+        misconceptions: [],
+        nextDifficulty: "adaptive" as const,
+        socraticMoves: [] as SocraticMove[],
+        graphHints: [] as string[],
+      }
+    }
+
     const lengthScore = Math.min(1, answer.length / 500)
-    const includesPacelc = normalized.includes("pacelc")
-    const mentionsRaft = normalized.includes("raft") || normalized.includes("paxos")
+    const understanding = Math.min(1, 0.3 + lengthScore * 0.5)
+    const confidence = Math.min(1, 0.25 + lengthScore * 0.5 + (mode === "interview" ? 0.05 : 0))
 
     const gaps: Gap[] = []
-    if (!hasPartition) gaps.push({ label: "Опиши, что такое сетевой partition", done: false, hint: "Разрыв связности между нодами" })
-    if (!hasTradeoff) gaps.push({ label: "Отрази CAP trade-off", done: false, hint: "Связь consistency vs availability" })
-    if (!hasExample) gaps.push({ label: "Приведи реальный пример", done: false, hint: "Dynamo, MongoDB, Kafka" })
-
-    const base = 0.3 + lengthScore * 0.3 + (hasTradeoff ? 0.2 : 0) + (hasExample ? 0.1 : 0) + (hasNumbers ? 0.1 : 0)
-    const understanding = Math.min(1, base)
-    const confidence = Math.min(1, 0.25 + lengthScore * 0.5 + (hasNumbers ? 0.1 : 0) + (mode === "interview" ? 0.05 : 0))
-
     const moves: SocraticMove[] = []
-    if (!hasTradeoff) {
-      moves.push({
-        type: "probe",
-        text: "Как CAP влияет на выбор между консистентностью и доступностью в реальном инциденте?",
-        rationale: "Уточнить понимание ключевого trade-off",
-        difficulty: "intermediate",
-      })
-    }
-    if (hasPartition && !hasExample) {
-      moves.push({
-        type: "challenge",
-        text: "Приведи конкретный кейс из продакшена, где partition сломал систему. Что бы ты сделал иначе?",
-        difficulty: "advanced",
-      })
-    }
-    if (understanding > 0.6) {
-      moves.push({
-        type: "extend",
-        text: "Сравни CAP и PACELC: как latency меняет выбор?",
-        difficulty: "advanced",
-      })
-    } else {
-      moves.push({
-        type: "simplify",
-        text: "Опиши CAP как для менеджера без техбэкграунда за 2 предложения.",
-        difficulty: "beginner",
-      })
-    }
-
     const graphHints: KnowledgeHint[] = []
-    if (!hasPartition) graphHints.push({ concept: "Partition Tolerance", status: "unexplored", action: "Разобрать сценарий split-brain" })
-    if (!hasTradeoff) graphHints.push({ concept: "Consistency vs Availability", status: "weak", action: "Пример AP и CP" })
-    if (hasExample && hasTradeoff) graphHints.push({ concept: "PACELC", status: "solid", action: "Сравнить с CAP" })
-    if (mentionsRaft) graphHints.push({ concept: "Consensus (Raft/Paxos)", status: "weak", action: "Связать с CAP" })
-
-    const misconceptions = []
-    if (!hasPartition) {
-      misconceptions.push({ label: "CAP без partition — неполное определение", correction: "Partition tolerance обязательна" })
-    }
-    if (normalized.includes("choose two")) {
-      misconceptions.push({
-        label: "CAP не про выбор любых двух свойств",
-        correction: "Partition считается данностью, выбор — между C и A при P",
-      })
-    }
-    if (includesPacelc && !hasTradeoff) {
-      misconceptions.push({
-        label: "Упомянут PACELC без явного trade-off",
-        correction: "PACELC добавляет latency trade-off к CAP, укажи L",
-      })
-    }
 
     return {
       understanding,
       confidence,
       gaps,
-      misconceptions,
-      notes: understanding > 0.7 ? "Хорошо! Давай углубимся в PACELC." : "Нужно связать partition с выбором CA.",
-      nextDifficulty: (understanding > 0.7 ? "advanced" : "intermediate") as "beginner" | "intermediate" | "advanced",
+      misconceptions: [],
+      notes: "",
+      nextDifficulty: "adaptive" as const,
       socraticMoves: moves,
       graphHints,
     }
@@ -277,6 +248,17 @@ export default function ChatPage() {
     return cookieMatch ? decodeURIComponent(cookieMatch[1]) : null
   }
 
+  const getCurrentQuestion = () => {
+    const lastAssistant = [...messages].reverse().find((m) => m.role === "assistant")
+    return lastAssistant?.content ?? STARTER_PROMPT
+  }
+
+  const getTopic = () => {
+    if (sessionDetail?.topic) return sessionDetail.topic
+    const firstUser = messages.find((m) => m.role === "user")
+    return firstUser?.content?.slice(0, 120) ?? "General"
+  }
+
   const fetchAnalysis = async (answer: string, currentSessionId: number | null) => {
     const token = getAccessToken()
     if (!token) return null
@@ -288,16 +270,16 @@ export default function ChatPage() {
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          question: QUESTION.prompt,
+          question: getCurrentQuestion(),
           answer,
-          topic: QUESTION.topic,
+          topic: getTopic(),
           mode,
-          required_terms: ["partition", "consistency", "availability"],
+          required_terms: [],
           session_id: currentSessionId ? String(currentSessionId) : undefined,
         }),
       })
       if (!resp.ok) return null
-      return (await resp.json()) as any
+      return (await resp.json()) as SocraticAnalyzeResponse
     } catch (err) {
       console.warn("socratic analyze fallback to local", err)
       return null
@@ -324,8 +306,8 @@ export default function ChatPage() {
 
       if (!currentSessionId) {
         const newSession = await createSession({
-          topic: QUESTION.topic,
-          level: QUESTION.difficulty,
+          topic: content.slice(0, 255),
+          level: null,
         })
         currentSessionId = newSession.id
         setSessionId(currentSessionId)
@@ -344,16 +326,28 @@ export default function ChatPage() {
             gaps: local.gaps,
             notes: local.notes,
             misconceptions: remote.analysis.misconceptions ?? local.misconceptions,
-            nextDifficulty: remote.analysis.nextDifficulty ?? local.nextDifficulty,
+            nextDifficulty: (() => {
+              const d = remote.analysis.nextDifficulty ?? local.nextDifficulty
+              return d === "adaptive" ? undefined : (d as "beginner" | "intermediate" | "advanced")
+            })(),
           }
         : local
       const socratic = remote?.socratic ?? { moves: local.socraticMoves, next_step: local.notes }
       const graph = remote?.graph ?? { hints: local.graphHints }
       const selectedQuestion =
-        socratic.selected_question ||
-        socratic.moves?.[0]?.text ||
-        local.socraticMoves?.[0]?.text ||
+        socratic.selected_question ??
+        socratic.moves?.[0]?.text ??
+        local.socraticMoves?.[0]?.text ??
         "Уточни свой ответ."
+      const normalizedHints: KnowledgeHint[] = Array.isArray(graph?.hints)
+        ? graph.hints.map((h) => (typeof h === "string" ? { concept: h, status: "weak" as const } : h))
+        : Array.isArray(local.graphHints)
+          ? local.graphHints.map((h) => (typeof h === "string" ? { concept: h, status: "weak" as const } : h))
+          : []
+      const nextDiff =
+        analysis.nextDifficulty === "adaptive"
+          ? undefined
+          : (analysis.nextDifficulty as "beginner" | "intermediate" | "advanced" | undefined)
       const assistantMessage: Message = {
         id: crypto.randomUUID(),
         role: "assistant",
@@ -366,17 +360,15 @@ export default function ChatPage() {
             gaps: analysis.gaps,
             notes: analysis.notes,
             misconceptions: analysis.misconceptions,
-            nextDifficulty: analysis.nextDifficulty,
+            nextDifficulty: nextDiff,
           },
           socratic: {
             moves: socratic.moves ?? local.socraticMoves,
-            nextStep: socratic.next_step,
+            nextStep: socratic.next_step ?? undefined,
             selected_question: socratic.selected_question ?? selectedQuestion,
-            selection_rationale: socratic.selection_rationale,
+            selection_rationale: socratic.selection_rationale ?? undefined,
           },
-          graph: {
-            hints: graph?.hints ?? local.graphHints,
-          },
+          graph: { hints: normalizedHints.length > 0 ? normalizedHints : undefined },
         },
       }
 
@@ -393,7 +385,7 @@ export default function ChatPage() {
     router.replace("/login")
   }
 
-  const activeQuestion = messages.filter((m) => m.role === "assistant").pop() || initialQuestionMessage
+  const activeQuestion = messages.filter((m) => m.role === "assistant").pop() || starterMessage
   const history = messages.slice(0, -1) // All except current (active) question? 
   // Wait, if last is USER (loading), then active is still the previous assistant msg?
   // Let's refine:
@@ -413,7 +405,7 @@ export default function ChatPage() {
     }
   }
 
-  const mainQuestion = messages[latestAssistantIndex] || initialQuestionMessage
+  const mainQuestion = messages[latestAssistantIndex] || starterMessage
   const conversationHistory = latestAssistantIndex > 0 ? messages.slice(0, latestAssistantIndex) : []
   const pendingUserMessage = messages.length > latestAssistantIndex + 1 ? messages[messages.length - 1] : null
 
@@ -436,14 +428,21 @@ export default function ChatPage() {
 
           <div className="hidden items-center gap-4 md:flex">
             <div className="flex items-center gap-2 rounded-full border border-white/5 bg-white/5 px-4 py-1.5">
-              <span className="text-xs text-white/50">{sessionDetail?.topic || QUESTION.topic}</span>
+              <span className="text-xs text-white/50">{sessionDetail?.topic ?? "—"}</span>
               <div className="h-3 w-px bg-white/10" />
-              <GlowBadge color="orange">{sessionDetail?.level || QUESTION.difficulty}</GlowBadge>
+              <GlowBadge color="orange">{sessionDetail?.level ?? "Adaptive"}</GlowBadge>
             </div>
           </div>
 
           <div className="flex items-center gap-4">
-            <button 
+            <button
+              onClick={() => router.push("/knowledge")}
+              className="flex items-center gap-2 text-xs font-medium text-white/50 transition-colors hover:text-white"
+            >
+              <Network className="size-3.5" />
+              Graph
+            </button>
+            <button
               onClick={() => router.push("/sessions")}
               className="text-xs font-medium text-white/50 transition-colors hover:text-white"
             >
@@ -528,7 +527,7 @@ export default function ChatPage() {
                       <Activity className="size-3" />
                       Assistant Protocol
                     </div>
-                    <span className="text-[10px] text-white/30">{mainQuestion.timestamp.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                    <ClientTime value={mainQuestion.timestamp} className="text-[10px] text-white/30" />
                   </div>
 
                   <div className="space-y-4">
@@ -556,12 +555,46 @@ export default function ChatPage() {
                      </div>
                   )}
 
-                  {/* Hints / Socratic Moves (if available in metadata) */}
-                  {mainQuestion.metadata?.socratic?.moves && (
+                  {/* Why this question (helps answer "how does this help me learn") */}
+                  {mainQuestion.metadata?.socratic?.selection_rationale && (
+                    <div className="mt-6 rounded-lg border border-white/5 bg-white/[0.02] p-4">
+                      <div className="mb-1.5 flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-orange-400/80">
+                        <Lightbulb className="size-3" />
+                        Why this question
+                      </div>
+                      <p className="text-sm text-white/60 leading-relaxed">
+                        {mainQuestion.metadata.socratic.selection_rationale}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Your gaps (so you see what to improve) */}
+                  {mainQuestion.metadata?.analysis?.gaps && mainQuestion.metadata.analysis.gaps.length > 0 && (
+                    <div className="mt-6 rounded-lg border border-amber-500/10 bg-amber-500/5 p-4">
+                      <div className="mb-2 flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-amber-400/80">
+                        <Brain className="size-3" />
+                        Gaps to close
+                      </div>
+                      <ul className="space-y-2">
+                        {mainQuestion.metadata.analysis.gaps.map((gap, i) => (
+                          <li key={i} className="flex gap-2 text-sm">
+                            <span className="text-amber-400/70">•</span>
+                            <span className="text-white/70">{gap.label}</span>
+                            {gap.hint ? (
+                              <span className="text-white/40"> — {gap.hint}</span>
+                            ) : null}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {/* Socratic moves (strategy tags) */}
+                  {mainQuestion.metadata?.socratic?.moves && mainQuestion.metadata.socratic.moves.length > 0 && (
                     <div className="mt-6 flex flex-wrap gap-2 pt-4">
                        {mainQuestion.metadata.socratic.moves.map((move, i) => (
                          <span key={i} className="text-[10px] text-white/20 px-2 py-1 border border-white/5 rounded">
-                           Strategy: {move.type}
+                           {move.type}
                          </span>
                        ))}
                     </div>
@@ -639,17 +672,20 @@ export default function ChatPage() {
               </div>
             </motion.div>
 
-            {/* --- 4) COGNITIVE FEEDBACK (Placeholder) --- */}
+            {/* --- 4) COGNITIVE FEEDBACK --- */}
             <motion.div 
                initial={{ opacity: 0 }}
                animate={{ opacity: 1 }}
                transition={{ delay: 0.4 }}
                className="rounded-xl border border-white/5 bg-white/[0.02] p-6"
             >
-              <div className="mb-6 flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-white/40">
+              <div className="mb-2 flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-white/40">
                 <Brain className="size-3" />
                 Cognitive Evaluation Engine
               </div>
+              <p className="mb-6 text-xs text-white/40 max-w-xl">
+                Each answer is analyzed for depth and clarity. Gaps and &quot;Why this question&quot; above show what to improve and why the next question was chosen — so the dialogue targets your weak spots.
+              </p>
               
               <div className="grid gap-6 sm:grid-cols-2">
                 <ProgressBar label="Depth of Reasoning" value={mainQuestion.metadata?.analysis?.understanding ? mainQuestion.metadata.analysis.understanding * 100 : 0} color="bg-blue-500" />
